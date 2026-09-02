@@ -307,6 +307,7 @@ test("OAuth callback failures and cancellation return only fixed frontend result
   } finally {
     console.error = originalConsoleError;
   }
+
 });
 
 test("a callback configuration error still returns to a valid frontend URL", async (t) => {
@@ -535,8 +536,8 @@ test("production OAuth and session cookies are HttpOnly, Secure, SameSite=Lax, a
   t.after(() => database.close());
   const env = testEnv(database.DB, {
     APP_ENV: "production",
-    GITHUB_REDIRECT_URI: "https://api.example.com/api/auth/github/callback",
-    FRONTEND_URL: "https://app.example.com/"
+    GITHUB_REDIRECT_URI: "https://anonymous.example.workers.dev/api/auth/github/callback",
+    FRONTEND_URL: "https://anonymous.example.workers.dev/"
   });
   await seedAdmin(database.DB, {
     githubUserId: "404",
@@ -545,7 +546,7 @@ test("production OAuth and session cookies are HttpOnly, Secure, SameSite=Lax, a
   });
 
   const loginStart = await handleApiRequest(
-    new Request("https://api.example.com/api/auth/github"),
+    new Request("https://anonymous.example.workers.dev/api/auth/github"),
     env
   );
   const oauthCookie = setCookies(loginStart)[0];
@@ -580,4 +581,50 @@ test("production OAuth and session cookies are HttpOnly, Secure, SameSite=Lax, a
   assert.match(clearedSessionCookie, /Max-Age=0/);
   assert.match(clearedSessionCookie, /Expires=Thu, 01 Jan 1970 00:00:00 GMT/);
   assert.doesNotMatch(clearedSessionCookie, /Domain=/i);
+});
+
+test("production OAuth rejects a cross-site admin frontend configuration", async (t) => {
+  const database = createTestDatabase();
+  t.after(() => database.close());
+  const env = testEnv(database.DB, {
+    APP_ENV: "production",
+    GITHUB_REDIRECT_URI: "https://anonymous.example.workers.dev/api/auth/github/callback",
+    FRONTEND_URL: "https://flashingtw.github.io/anonymous-ig/"
+  });
+
+  const response = await handleApiRequest(
+    new Request("https://anonymous.example.workers.dev/api/auth/github"),
+    env
+  );
+  assert.equal(response.status, 503);
+  assert.equal((await responseJson(response)).error.code, "ADMIN_AUTH_NOT_CONFIGURED");
+
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  try {
+    const callback = await handleApiRequest(
+      new Request(
+        "https://anonymous.example.workers.dev/api/auth/github/callback?code=private&state=private"
+      ),
+      env
+    );
+    const location = new URL(callback.headers.get("Location"));
+    assert.equal(callback.status, 302);
+    assert.equal(location.origin, "https://anonymous.example.workers.dev");
+    assert.equal(location.pathname, "/admin/");
+    assert.equal(location.search, "?auth=error");
+
+    const wrongCallbackPath = testEnv(database.DB, {
+      APP_ENV: "production",
+      GITHUB_REDIRECT_URI: "https://anonymous.example.workers.dev/not-the-callback",
+      FRONTEND_URL: "https://anonymous.example.workers.dev/"
+    });
+    const wrongCallbackResponse = await handleApiRequest(
+      new Request("https://anonymous.example.workers.dev/api/auth/github"),
+      wrongCallbackPath
+    );
+    assert.equal(wrongCallbackResponse.status, 503);
+  } finally {
+    console.error = originalConsoleError;
+  }
 });

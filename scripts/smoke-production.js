@@ -77,7 +77,7 @@ assert.equal(
 );
 assert.equal(
   allowedPreflight.response.headers.get("Access-Control-Allow-Credentials"),
-  "true"
+  null
 );
 assert.notEqual(
   allowedPreflight.response.headers.get("Access-Control-Allow-Origin"),
@@ -97,6 +97,15 @@ assert.equal(deniedPreflight.response.headers.get("Access-Control-Allow-Origin")
 assert.equal(
   deniedPreflight.response.headers.get("Access-Control-Allow-Credentials"),
   null
+);
+
+const adminSurface = await request("/admin/");
+assert.equal(adminSurface.response.status, 200);
+assert.equal(adminSurface.response.headers.get("Cache-Control"), "no-store");
+assert.equal(adminSurface.response.headers.get("X-Content-Type-Options"), "nosniff");
+assert.match(
+  adminSurface.response.headers.get("Content-Security-Policy") ?? "",
+  /frame-ancestors 'none'/
 );
 
 console.log("Read-only production smoke checks passed. No submission was created.");

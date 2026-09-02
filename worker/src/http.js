@@ -101,6 +101,33 @@ function normalizeConfiguredOrigin(value, env) {
   return url.protocol === "https:" ? url.origin : null;
 }
 
+function normalizeConfiguredSiteOrigin(value, env) {
+  const candidate = value.trim();
+  if (!candidate) {
+    return null;
+  }
+
+  let url;
+  try {
+    url = new URL(candidate);
+  } catch {
+    return null;
+  }
+
+  if (url.username || url.password || url.search || url.hash) {
+    return null;
+  }
+
+  const isLoopback = LOOPBACK_HOSTS.has(url.hostname);
+  if (isLoopback) {
+    const localDevelopmentUrl = env.APP_ENV === "development"
+      && new Set(["http:", "https:"]).has(url.protocol);
+    return localDevelopmentUrl ? url.origin : null;
+  }
+
+  return url.protocol === "https:" ? url.origin : null;
+}
+
 function parseAllowedOrigins(env) {
   const configured = new Set(
     (env.ALLOWED_ORIGINS ?? "")
@@ -113,9 +140,14 @@ function parseAllowedOrigins(env) {
     return configured;
   }
 
-  const frontendOrigin = normalizeConfiguredOrigin(env.FRONTEND_URL ?? "", env);
-  return frontendOrigin && configured.has(frontendOrigin)
-    ? new Set([frontendOrigin])
+  // Production has one external public frontend. The Worker-hosted admin is
+  // same-origin and therefore does not need a CORS allowlist entry.
+  const publicSiteOrigin = normalizeConfiguredSiteOrigin(
+    env.PUBLIC_SITE_URL ?? "",
+    env
+  );
+  return configured.size === 1 && configured.has(publicSiteOrigin)
+    ? configured
     : new Set();
 }
 
@@ -195,7 +227,6 @@ export function applyCorsHeaders(response, origin) {
 
   if (origin) {
     headers.set("Access-Control-Allow-Origin", origin);
-    headers.set("Access-Control-Allow-Credentials", "true");
     headers.append("Vary", "Origin");
   }
 
@@ -208,6 +239,7 @@ export function applyCorsHeaders(response, origin) {
 
 export const __testables = Object.freeze({
   normalizeConfiguredOrigin,
+  normalizeConfiguredSiteOrigin,
   parseAllowedOrigins,
   parseRequestOrigin
 });

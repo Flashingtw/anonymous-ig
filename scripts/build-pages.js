@@ -77,6 +77,34 @@ function productionHtml(source, { apiOrigin, socialImage }) {
   );
 }
 
+function escapeHtmlAttribute(value) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function adminRedirectHtml(apiOrigin) {
+  const adminUrl = escapeHtmlAttribute(new URL("/admin/", apiOrigin).href);
+  return `<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <meta name="referrer" content="no-referrer">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'">
+    <meta http-equiv="refresh" content="0; url=${adminUrl}">
+    <title>前往管理後台</title>
+  </head>
+  <body>
+    <p><a href="${adminUrl}" rel="noreferrer">前往安全管理後台</a></p>
+  </body>
+</html>
+`;
+}
+
 export async function buildPages({
   apiBaseUrl,
   siteUrl,
@@ -109,11 +137,23 @@ export async function buildPages({
     "utf8"
   );
 
-  for (const relativePath of ["index.html", "admin/index.html"]) {
+  for (const relativePath of ["index.html"]) {
     const path = join(output, relativePath);
     const html = await readFile(path, "utf8");
     await writeFile(path, productionHtml(html, { apiOrigin, socialImage }), "utf8");
   }
+
+  // GitHub Pages hosts only the public submission UI. Keep /admin/ as a
+  // no-script handoff to the Worker-hosted, same-origin admin application.
+  await rm(join(output, "admin"), { recursive: true, force: true });
+  await mkdir(join(output, "admin"), { recursive: true });
+  await writeFile(
+    join(output, "admin/index.html"),
+    adminRedirectHtml(apiOrigin),
+    "utf8"
+  );
+  await rm(join(output, "assets/admin.js"), { force: true });
+  await rm(join(output, "assets/admin-auth.js"), { force: true });
 
   const contentPath = join(output, "content.json");
   const content = JSON.parse(await readFile(contentPath, "utf8"));

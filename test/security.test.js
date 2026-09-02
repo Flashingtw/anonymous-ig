@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { authenticateAdmin, __testables } from "../worker/src/auth.js";
 import { corsDecision, handlePreflight } from "../worker/src/http.js";
-import { handleApiRequest } from "../worker/src/index.js";
+import worker, { handleApiRequest } from "../worker/src/index.js";
 import { createTestDatabase } from "./helpers/d1.js";
 
 const validToken = "this-is-a-long-local-development-token";
@@ -80,27 +80,40 @@ test("CORS allows same-origin and exact allowlist entries only", () => {
   }), env).allowed, false);
 });
 
-test("production CORS only accepts the configured HTTPS frontend origin", () => {
+test("production CORS accepts exactly one configured public HTTPS origin", () => {
   const env = {
     APP_ENV: "production",
-    FRONTEND_URL: "https://app.example.com/",
-    ALLOWED_ORIGINS: [
-      "https://app.example.com",
-      "https://other.example.com",
-      "http://localhost:8000",
-      "*"
-    ].join(",")
+    PUBLIC_SITE_URL: "https://flashingtw.github.io/anonymous-ig/",
+    ALLOWED_ORIGINS: "https://flashingtw.github.io"
   };
 
-  assert.equal(corsDecision(new Request("https://api.example.com/api/health", {
-    headers: { Origin: "https://app.example.com" }
+  assert.equal(corsDecision(new Request("https://anonymous.example.workers.dev/api/health", {
+    headers: { Origin: "https://flashingtw.github.io" }
   }), env).allowed, true);
-  assert.equal(corsDecision(new Request("https://api.example.com/api/health", {
-    headers: { Origin: "https://other.example.com" }
+  assert.equal(corsDecision(new Request("https://anonymous.example.workers.dev/api/health", {
+    headers: { Origin: "https://evil.github.io" }
   }), env).allowed, false);
-  assert.equal(corsDecision(new Request("https://api.example.com/api/health", {
+  assert.equal(corsDecision(new Request("https://anonymous.example.workers.dev/api/health", {
     headers: { Origin: "http://localhost:8000" }
   }), env).allowed, false);
+
+  const ambiguous = {
+    APP_ENV: "production",
+    PUBLIC_SITE_URL: "https://flashingtw.github.io/anonymous-ig/",
+    ALLOWED_ORIGINS: "https://flashingtw.github.io,https://other.example"
+  };
+  assert.equal(corsDecision(new Request("https://anonymous.example.workers.dev/api/health", {
+    headers: { Origin: "https://flashingtw.github.io" }
+  }), ambiguous).allowed, false);
+
+  const mismatchedPublicSite = {
+    APP_ENV: "production",
+    PUBLIC_SITE_URL: "https://someone-else.github.io/project/",
+    ALLOWED_ORIGINS: "https://flashingtw.github.io"
+  };
+  assert.equal(corsDecision(new Request("https://anonymous.example.workers.dev/api/health", {
+    headers: { Origin: "https://flashingtw.github.io" }
+  }), mismatchedPublicSite).allowed, false);
 });
 
 test("localhost CORS origins are accepted only during development", () => {
@@ -114,6 +127,7 @@ test("localhost CORS origins are accepted only during development", () => {
   assert.equal(corsDecision(request, {
     APP_ENV: "production",
     FRONTEND_URL: "https://app.example.com/",
+    PUBLIC_SITE_URL: "https://app.example.com/",
     ALLOWED_ORIGINS: "http://localhost:8000"
   }).allowed, false);
 
@@ -123,6 +137,7 @@ test("localhost CORS origins are accepted only during development", () => {
   assert.equal(corsDecision(secureLoopback, {
     APP_ENV: "production",
     FRONTEND_URL: "https://localhost:8000/",
+    PUBLIC_SITE_URL: "https://localhost:8000/",
     ALLOWED_ORIGINS: "https://localhost:8000"
   }).allowed, false);
 });
@@ -157,21 +172,21 @@ test("health checks D1 without exposing internals and carries API security heade
   const env = {
     DB: database.DB,
     APP_ENV: "production",
-    FRONTEND_URL: "https://app.example.com/",
-    ALLOWED_ORIGINS: "https://app.example.com"
+    PUBLIC_SITE_URL: "https://flashingtw.github.io/anonymous-ig/",
+    ALLOWED_ORIGINS: "https://flashingtw.github.io"
   };
   const response = await handleApiRequest(new Request(
-    "https://api.example.com/api/health",
-    { headers: { Origin: "https://app.example.com" } }
+    "https://anonymous.example.workers.dev/api/health",
+    { headers: { Origin: "https://flashingtw.github.io" } }
   ), env);
 
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { ok: true });
   assert.equal(
     response.headers.get("Access-Control-Allow-Origin"),
-    "https://app.example.com"
+    "https://flashingtw.github.io"
   );
-  assert.equal(response.headers.get("Access-Control-Allow-Credentials"), "true");
+  assert.equal(response.headers.get("Access-Control-Allow-Credentials"), null);
   assert.match(response.headers.get("Vary"), /Origin/);
   assert.equal(response.headers.get("Cache-Control"), "no-store");
   assert.equal(response.headers.get("Referrer-Policy"), "no-referrer");
@@ -191,6 +206,7 @@ test("production health errors and logs omit SQL, bindings, stack, and secrets",
   const env = {
     APP_ENV: "production",
     FRONTEND_URL: "https://app.example.com/",
+    PUBLIC_SITE_URL: "https://app.example.com/",
     ALLOWED_ORIGINS: "https://app.example.com",
     DB: {
       prepare() {
@@ -219,8 +235,8 @@ test("production health errors and logs omit SQL, bindings, stack, and secrets",
 test("allowed and denied preflight responses apply credentials safely", async () => {
   const env = {
     APP_ENV: "production",
-    FRONTEND_URL: "https://app.example.com/",
-    ALLOWED_ORIGINS: "https://app.example.com"
+    PUBLIC_SITE_URL: "https://flashingtw.github.io/anonymous-ig/",
+    ALLOWED_ORIGINS: "https://flashingtw.github.io"
   };
   const preflightHeaders = {
     "Access-Control-Request-Method": "POST",
@@ -230,12 +246,12 @@ test("allowed and denied preflight responses apply credentials safely", async ()
     "https://api.example.com/api/admin/submissions/1/approve",
     {
       method: "OPTIONS",
-      headers: { ...preflightHeaders, Origin: "https://app.example.com" }
+      headers: { ...preflightHeaders, Origin: "https://flashingtw.github.io" }
     }
   ), env);
   assert.equal(allowed.status, 204);
-  assert.equal(allowed.headers.get("Access-Control-Allow-Origin"), "https://app.example.com");
-  assert.equal(allowed.headers.get("Access-Control-Allow-Credentials"), "true");
+  assert.equal(allowed.headers.get("Access-Control-Allow-Origin"), "https://flashingtw.github.io");
+  assert.equal(allowed.headers.get("Access-Control-Allow-Credentials"), null);
   assert.equal(allowed.headers.get("X-Content-Type-Options"), "nosniff");
   assert.equal(allowed.headers.get("Referrer-Policy"), "no-referrer");
 
@@ -249,4 +265,57 @@ test("allowed and denied preflight responses apply credentials safely", async ()
   assert.equal(denied.status, 403);
   assert.equal(denied.headers.get("Access-Control-Allow-Origin"), null);
   assert.equal(denied.headers.get("Access-Control-Allow-Credentials"), null);
+});
+
+test("production Worker serves only the same-origin admin surface with security headers", async (t) => {
+  const database = createTestDatabase();
+  t.after(() => database.close());
+  const assetRequests = [];
+  const env = {
+    DB: database.DB,
+    APP_ENV: "production",
+    PUBLIC_SITE_URL: "https://flashingtw.github.io/anonymous-ig/",
+    ALLOWED_ORIGINS: "https://flashingtw.github.io",
+    ASSETS: {
+      async fetch(request) {
+        assetRequests.push(new URL(request.url).pathname);
+        return new Response("<!doctype html><title>Admin</title>", {
+          headers: { "Content-Type": "text/html; charset=utf-8" }
+        });
+      }
+    }
+  };
+
+  const admin = await worker.fetch(
+    new Request("https://anonymous.example.workers.dev/admin/"),
+    env
+  );
+  assert.equal(admin.status, 200);
+  assert.deepEqual(assetRequests, ["/admin/"]);
+  assert.equal(admin.headers.get("Cache-Control"), "no-store");
+  assert.equal(admin.headers.get("Referrer-Policy"), "no-referrer");
+  assert.equal(admin.headers.get("X-Content-Type-Options"), "nosniff");
+  assert.equal(admin.headers.get("X-Frame-Options"), "DENY");
+  assert.match(admin.headers.get("Content-Security-Policy"), /frame-ancestors 'none'/);
+  assert.match(admin.headers.get("Content-Security-Policy"), /connect-src 'self'/);
+
+  const root = await worker.fetch(
+    new Request("https://anonymous.example.workers.dev/"),
+    env
+  );
+  assert.equal(root.status, 302);
+  assert.equal(root.headers.get("Location"), "https://flashingtw.github.io/anonymous-ig/");
+
+  const unrelated = await worker.fetch(
+    new Request("https://anonymous.example.workers.dev/og.png"),
+    env
+  );
+  assert.equal(unrelated.status, 404);
+
+  const health = await worker.fetch(
+    new Request("https://anonymous.example.workers.dev/api/health"),
+    env
+  );
+  assert.equal(health.status, 200);
+  assert.deepEqual(assetRequests, ["/admin/"]);
 });

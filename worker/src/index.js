@@ -21,6 +21,84 @@ import {
 } from "./handlers/auth.js";
 import { healthHandler } from "./handlers/health.js";
 
+const ADMIN_HTML_CSP = [
+  "default-src 'self'",
+  "connect-src 'self'",
+  "img-src 'self' data:",
+  "style-src 'self'",
+  "script-src 'self'",
+  "object-src 'none'",
+  "frame-src 'none'",
+  "frame-ancestors 'none'",
+  "base-uri 'none'",
+  "form-action 'self'"
+].join("; ");
+
+const ADMIN_SHARED_ASSETS = new Set([
+  "/config.js",
+  "/content.json",
+  "/assets/styles.css",
+  "/assets/admin.js",
+  "/assets/admin-auth.js",
+  "/assets/api.js",
+  "/assets/content.js"
+]);
+
+function isAdminAssetPath(pathname) {
+  return pathname === "/admin"
+    || pathname.startsWith("/admin/")
+    || ADMIN_SHARED_ASSETS.has(pathname);
+}
+
+function secureAdminAssetResponse(response, pathname) {
+  const headers = new Headers(response.headers);
+  headers.set("Referrer-Policy", "no-referrer");
+  headers.set("X-Content-Type-Options", "nosniff");
+
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
+    headers.set("Cache-Control", "no-store");
+    headers.set("Content-Security-Policy", ADMIN_HTML_CSP);
+    headers.set("X-Frame-Options", "DENY");
+  } else if (pathname === "/config.js" || pathname === "/content.json") {
+    headers.set("Cache-Control", "no-store");
+  } else {
+    headers.set("Cache-Control", "public, max-age=0, must-revalidate");
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
+}
+
+function publicSiteRedirect(env) {
+  try {
+    const url = new URL(env.PUBLIC_SITE_URL ?? "");
+    if (
+      url.protocol !== "https:"
+      || url.username
+      || url.password
+      || url.search
+      || url.hash
+    ) {
+      return null;
+    }
+
+    return new Response(null, {
+      status: 302,
+      headers: {
+        "Cache-Control": "no-store",
+        Location: url.href,
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff"
+      }
+    });
+  } catch {
+    return null;
+  }
+}
+
 export async function routeApi(request, env, dependencies = {}) {
   const url = new URL(request.url);
   const pathname = url.pathname.length > 1
@@ -152,7 +230,23 @@ export default {
     }
 
     if (env.ASSETS) {
-      return env.ASSETS.fetch(request);
+      if (env.APP_ENV !== "production") {
+        return env.ASSETS.fetch(request);
+      }
+
+      if (url.pathname === "/" || url.pathname === "/index.html") {
+        const redirect = publicSiteRedirect(env);
+        if (redirect) {
+          return redirect;
+        }
+      }
+
+      if (isAdminAssetPath(url.pathname)) {
+        return secureAdminAssetResponse(
+          await env.ASSETS.fetch(request),
+          url.pathname
+        );
+      }
     }
 
     return jsonResponse(

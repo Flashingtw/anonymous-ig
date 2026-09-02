@@ -114,6 +114,7 @@ form.addEventListener("submit", async (event) => {
   try {
     await apiRequest("/api/submissions", {
       method: "POST",
+      credentials: "omit",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content })
     });

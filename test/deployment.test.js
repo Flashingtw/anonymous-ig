@@ -18,28 +18,44 @@ test("Pages build contains frontend only and injects one production API origin",
   t.after(() => rm(temporaryRoot, { recursive: true, force: true }));
 
   await buildPages({
-    apiBaseUrl: "https://api.example.com",
-    siteUrl: "https://app.example.com/",
+    apiBaseUrl: "https://anonymous-api.example.workers.dev",
+    siteUrl: "https://flashingtw.github.io/anonymous-ig/",
     sourceDirectory: join(projectRoot, "frontend"),
     outputDirectory
   });
 
   const config = await readFile(join(outputDirectory, "config.js"), "utf8");
-  assert.match(config, /API_BASE_URL: "https:\/\/api\.example\.com"/);
+  assert.match(config, /API_BASE_URL: "https:\/\/anonymous-api\.example\.workers\.dev"/);
   assert.doesNotMatch(config, /GITHUB_CLIENT_SECRET|SESSION_SECRET|DEV_ADMIN_TOKEN/);
 
-  for (const relativePath of ["index.html", "admin/index.html"]) {
-    const html = await readFile(join(outputDirectory, relativePath), "utf8");
-    assert.match(html, /connect-src 'self' https:\/\/api\.example\.com;/);
-    assert.doesNotMatch(html, /connect-src[^;]*\shttps:;/);
-    assert.match(html, /object-src 'none'/);
-  }
+  const publicHtml = await readFile(join(outputDirectory, "index.html"), "utf8");
+  assert.match(publicHtml, /connect-src 'self' https:\/\/anonymous-api\.example\.workers\.dev;/);
+  assert.doesNotMatch(publicHtml, /connect-src[^;]*\shttps:;/);
+  assert.match(publicHtml, /object-src 'none'/);
+
+  const adminHandoff = await readFile(
+    join(outputDirectory, "admin/index.html"),
+    "utf8"
+  );
+  assert.match(adminHandoff, /https:\/\/anonymous-api\.example\.workers\.dev\/admin\//);
+  assert.doesNotMatch(adminHandoff, /admin\.js|config\.js|api\/auth/);
+  await assert.rejects(
+    () => readFile(join(outputDirectory, "assets/admin.js"), "utf8"),
+    /ENOENT/
+  );
+  await assert.rejects(
+    () => readFile(join(outputDirectory, "assets/admin-auth.js"), "utf8"),
+    /ENOENT/
+  );
 
   const content = JSON.parse(await readFile(
     join(outputDirectory, "content.json"),
     "utf8"
   ));
-  assert.equal(content.social.image, "https://app.example.com/og.png");
+  assert.equal(
+    content.social.image,
+    "https://flashingtw.github.io/anonymous-ig/og.png"
+  );
   await assert.rejects(
     () => readFile(join(outputDirectory, "worker/src/index.js"), "utf8"),
     /ENOENT/
@@ -83,9 +99,11 @@ test("owner bootstrap SQL uses numeric identity and a plain enabled owner insert
 
 test("frontend fetches include credentials and source CSP has no HTTPS wildcard", async () => {
   const apiClient = await readFile(join(projectRoot, "frontend/assets/api.js"), "utf8");
+  const publicClient = await readFile(join(projectRoot, "frontend/assets/app.js"), "utf8");
   const publicHtml = await readFile(join(projectRoot, "frontend/index.html"), "utf8");
   const adminHtml = await readFile(join(projectRoot, "frontend/admin/index.html"), "utf8");
   assert.match(apiClient, /credentials:\s*"include"/);
+  assert.match(publicClient, /credentials:\s*"omit"/);
   assert.doesNotMatch(publicHtml, /connect-src[^;]*\shttps:;/);
   assert.doesNotMatch(adminHtml, /connect-src[^;]*\shttps:;/);
 });
@@ -105,4 +123,15 @@ test("Pages workflow deploys only the generated frontend artifact", async () => 
   assert.match(workflow, /PAGES_API_BASE_URL: \$\{\{ vars\.PAGES_API_BASE_URL \}\}/);
   assert.doesNotMatch(workflow, /GITHUB_CLIENT_SECRET|SESSION_SECRET|wrangler deploy/);
   assert.match(localConfig, /API_BASE_URL:\s*""/);
+});
+
+test("production Worker serves same-origin admin assets on workers.dev", async () => {
+  const workerConfig = await readFile(join(projectRoot, "wrangler.jsonc"), "utf8");
+  assert.match(workerConfig, /"workers_dev": true/);
+  assert.match(workerConfig, /"preview_urls": false/);
+  assert.match(workerConfig, /"directory": "\.\/frontend"/);
+  assert.match(workerConfig, /"binding": "ASSETS"/);
+  assert.match(workerConfig, /"run_worker_first": true/);
+  assert.match(workerConfig, /"PUBLIC_SITE_URL": "https:\/\/flashingtw\.github\.io\/anonymous-ig\/"/);
+  assert.match(workerConfig, /"ALLOWED_ORIGINS": "https:\/\/flashingtw\.github\.io"/);
 });

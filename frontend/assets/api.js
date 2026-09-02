@@ -15,14 +15,15 @@ function apiUrl(path) {
 
 export async function apiRequest(path, options = {}) {
   let response;
+  const { headers = {}, ...requestOptions } = options;
 
   try {
     response = await fetch(apiUrl(path), {
-      ...options,
       credentials: "include",
+      ...requestOptions,
       headers: {
         Accept: "application/json",
-        ...options.headers
+        ...headers
       }
     });
   } catch {

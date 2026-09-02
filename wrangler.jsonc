@@ -12,15 +12,24 @@
   "env": {
     "production": {
       "name": "anonymous-submissions-api-production",
-      "workers_dev": false,
+      "workers_dev": true,
+      "preview_urls": false,
+      "assets": {
+        "directory": "./frontend",
+        "binding": "ASSETS",
+        "run_worker_first": true,
+        "html_handling": "auto-trailing-slash",
+        "not_found_handling": "none"
+      },
       "vars": {
         "APP_ENV": "production",
         "ADMIN_AUTH_PROVIDER": "github",
         "DEV_ADMIN_MODE": "false",
         "GITHUB_CLIENT_ID": "REPLACE_WITH_PRODUCTION_GITHUB_CLIENT_ID",
-        "GITHUB_REDIRECT_URI": "https://api.example.com/api/auth/github/callback",
-        "FRONTEND_URL": "https://app.example.com/",
-        "ALLOWED_ORIGINS": "https://app.example.com",
+        "GITHUB_REDIRECT_URI": "https://replace-with-worker-subdomain.workers.dev/api/auth/github/callback",
+        "FRONTEND_URL": "https://replace-with-worker-subdomain.workers.dev/",
+        "PUBLIC_SITE_URL": "https://flashingtw.github.io/anonymous-ig/",
+        "ALLOWED_ORIGINS": "https://flashingtw.github.io",
         "SESSION_TTL_SECONDS": "28800"
       },
       "secrets": {
@@ -33,13 +42,12 @@
         {
           "binding": "DB",
           "database_name": "anonymous-submissions-production",
-          "database_id": "00000000-0000-0000-0000-000000000000",
+          "database_id": "281ce1f3-dcdb-4d13-a749-709dee63043f",
           "migrations_dir": "migrations"
         }
       ]
-      // Add api.example.com as a Custom Domain only after the Cloudflare zone
-      // is ready. Keeping routes out of source prevents a dry-run or initial
-      // deploy from changing DNS unexpectedly.
+      // The public submission page is on GitHub Pages. The sensitive admin UI
+      // is served by this Worker so OAuth and session cookies stay same-origin.
     }
   }
 }

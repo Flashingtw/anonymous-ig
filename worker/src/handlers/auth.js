@@ -91,11 +91,24 @@ function githubConfiguration(env) {
     throw configurationError();
   }
 
+  const validatedRedirect = validatePublicUrl(redirectUri, env);
+  const validatedFrontend = validatePublicUrl(frontendUrl, env);
+  if (validatedRedirect.pathname !== "/api/auth/github/callback") {
+    throw configurationError();
+  }
+  const frontendMatchesCallback = validatedFrontend.origin === validatedRedirect.origin
+    && validatedFrontend.pathname === "/";
+  if (!frontendMatchesCallback) {
+    throw configurationError();
+  }
+
   return {
     clientId,
     clientSecret,
-    redirectUri: validatePublicUrl(redirectUri, env).href,
-    frontendUrl: validatePublicUrl(frontendUrl, env).href,
+    redirectUri: validatedRedirect.href,
+    // OAuth always returns to the callback's trusted Worker origin. Never
+    // derive this from request Host or the cross-origin GitHub Pages URL.
+    frontendUrl: new URL("/", validatedRedirect).href,
     sessionSecret
   };
 }
@@ -273,8 +286,12 @@ export async function githubCallbackHandler(
     configuration = githubConfiguration(env);
   } catch (error) {
     try {
+      const callbackUrl = validatePublicUrl(
+        env.GITHUB_REDIRECT_URI?.trim() ?? "",
+        env
+      );
       const fallback = {
-        frontendUrl: validatePublicUrl(env.FRONTEND_URL?.trim() ?? "", env).href
+        frontendUrl: new URL("/", callbackUrl).href
       };
       logOauthCallbackFailure(error);
       return callbackResultResponse(fallback, env, "error");
