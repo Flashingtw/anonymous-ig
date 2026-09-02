@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <meta name="referrer" content="no-referrer">
+    <meta name="theme-color" content="#f4f1ea">
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'self'"
+    >
+    <title data-copy="admin.pageTitle">投稿管理</title>
+    <link rel="stylesheet" href="../assets/styles.css">
+    <script src="../config.js"></script>
+    <script src="../assets/admin.js" type="module"></script>
+  </head>
+  <body class="admin-page">
+    <header class="site-header container">
+      <a class="brand" href="../" aria-label="回到匿名投稿首頁" data-copy="admin.homeAriaLabel" data-copy-attribute="aria-label">
+        <span class="brand__mark" aria-hidden="true" data-copy="site.brandMark">匿</span>
+        <span data-copy="site.brandName">匿名投稿</span>
+      </a>
+      <span class="eyebrow" data-copy="admin.eyebrow">MODERATION</span>
+    </header>
+
+    <main class="container admin-main">
+      <section id="auth-panel" class="auth-layout" aria-labelledby="auth-title">
+        <div class="auth-copy">
+          <p id="auth-kicker" class="kicker" data-copy="admin.auth.kicker">ADMIN ACCESS</p>
+          <h1 id="auth-title" class="admin-auth-title" data-copy="admin.auth.title">進入管理</h1>
+          <p id="auth-description" data-copy="admin.auth.description">使用 GitHub 管理員帳號登入。</p>
+        </div>
+
+        <div class="panel auth-panel">
+          <div id="github-auth-panel">
+            <a id="github-sign-in" class="button button--primary button--wide" href="/api/auth/github">
+              <span data-copy="admin.auth.githubSignInLabel">Sign in with GitHub</span>
+              <span aria-hidden="true">→</span>
+            </a>
+            <p class="field__hint" data-copy="admin.auth.githubHint">只會讀取 GitHub 公開身份。</p>
+          </div>
+
+          <form id="admin-auth-form" novalidate hidden>
+            <label for="admin-token" data-copy="admin.auth.credentialLabel">DEV 管理憑證</label>
+            <input
+              id="admin-token"
+              name="admin-token"
+              type="password"
+              minlength="24"
+              autocomplete="off"
+              placeholder="輸入 DEV_ADMIN_TOKEN"
+              data-copy="admin.auth.credentialPlaceholder"
+              data-copy-attribute="placeholder"
+              aria-describedby="auth-hint auth-error"
+              required
+            >
+            <p id="auth-hint" class="field__hint" data-copy="admin.auth.credentialHint">憑證只暫存在目前分頁。</p>
+            <button id="auth-submit" class="button button--primary button--wide" type="submit">
+              <span data-copy="admin.auth.submitLabel">驗證並進入</span>
+              <span aria-hidden="true">→</span>
+            </button>
+          </form>
+          <p id="auth-error" class="field__error" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section id="dashboard" hidden>
+        <div id="dev-banner" class="dev-banner" role="note" hidden>
+          <span class="dev-banner__dot" aria-hidden="true">●</span>
+          <span data-copy="admin.dashboard.devBanner">開發管理模式已啟用。</span>
+        </div>
+
+        <div class="admin-heading">
+          <div>
+            <p class="kicker" data-copy="admin.dashboard.kicker">REVIEW QUEUE</p>
+            <h1 data-copy="admin.dashboard.title">投稿管理</h1>
+            <p data-copy="admin.dashboard.description">審核等待處理的匿名投稿。</p>
+          </div>
+          <div class="admin-toolbar">
+            <span id="admin-identity" class="admin-identity">
+              <span id="admin-username"></span>
+              <span id="admin-role" class="role-badge"></span>
+            </span>
+            <span id="pending-count" class="count-badge">待審核 0 篇</span>
+            <button id="refresh-button" class="button button--secondary" type="button" data-copy="admin.dashboard.refreshLabel">重新整理</button>
+            <button id="clear-auth-button" class="button button--quiet" type="button" data-copy="admin.dashboard.logoutLabel">Logout</button>
+          </div>
+        </div>
+
+        <div id="queue-status" class="sr-only" role="status" aria-live="polite"></div>
+
+        <section id="loading-state" class="queue-state" aria-busy="true">
+          <p class="queue-state__label" data-copy="admin.dashboard.loadingLabel">正在載入⋯</p>
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+        </section>
+
+        <section id="error-state" class="panel queue-state" hidden>
+          <p class="step-label" data-copy="admin.dashboard.errorEyebrow">CONNECTION ERROR</p>
+          <h2 data-copy="admin.dashboard.errorTitle">無法載入投稿</h2>
+          <p id="error-state-message" data-copy="admin.dashboard.errorBody">請確認後端服務是否正常。</p>
+          <button id="retry-button" class="button button--secondary" type="button" data-copy="admin.dashboard.retryLabel">重新載入</button>
+        </section>
+
+        <section id="empty-state" class="panel queue-state" hidden>
+          <p class="step-label" data-copy="admin.dashboard.emptyEyebrow">ALL CLEAR</p>
+          <h2 data-copy="admin.dashboard.emptyTitle">目前沒有待審核投稿</h2>
+          <p data-copy="admin.dashboard.emptyBody">新的投稿會顯示在這裡。</p>
+          <button id="empty-refresh-button" class="button button--secondary" type="button" data-copy="admin.dashboard.emptyRefreshLabel">重新整理</button>
+        </section>
+
+        <section id="submissions-list" class="submission-list" aria-label="待審核投稿清單" data-copy="admin.dashboard.listAriaLabel" data-copy-attribute="aria-label"></section>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,107 @@
+{
+  "site": {
+    "brandMark": "匿",
+    "brandName": "匿名投稿",
+    "footerTagline": "PRIVATE BY DEFAULT",
+    "footerCopyright": "© {year} ANONYMOUS INBOX"
+  },
+  "publicPage": {
+    "pageTitle": "匿名投稿",
+    "metaDescription": "不需登入的匿名投稿頁，投稿將先由管理員審核。",
+    "homeAriaLabel": "匿名投稿首頁",
+    "eyebrow": "OPEN INBOX",
+    "kicker": "匿名・免登入",
+    "title": "留下想說的話",
+    "description": "送出後會先審核。",
+    "form": {
+      "stepLabel": "01 / WRITE",
+      "title": "匿名投稿",
+      "privacyBadge": "匿名",
+      "contentLabel": "投稿內容",
+      "placeholder": "在這裡寫下內容⋯",
+      "privacyHint": "請勿留下可辨識身分的資訊。",
+      "submitLabel": "送出投稿",
+      "consent": "內容可能經整理後公開刊登。"
+    },
+    "messages": {
+      "characterCount": "{current} / {max} 字",
+      "sending": "送出中⋯",
+      "emptyContent": "請輸入投稿內容。",
+      "tooLong": "內容最多 {max} 字，目前超出 {over} 字。",
+      "genericSubmitError": "暫時無法送出，請稍後再試。",
+      "rateLimited": "送出得太頻繁了，請稍後再試。",
+      "success": "投稿已送出，謝謝你的分享。"
+    }
+  },
+  "admin": {
+    "pageTitle": "投稿管理",
+    "homeAriaLabel": "回到匿名投稿首頁",
+    "eyebrow": "MODERATION",
+    "auth": {
+      "kicker": "ADMIN ACCESS",
+      "title": "進入管理",
+      "description": "使用 GitHub 管理員帳號登入。",
+      "githubSignInLabel": "Sign in with GitHub",
+      "githubHint": "只會讀取 GitHub 公開身份。",
+      "devKicker": "DEVELOPMENT ACCESS",
+      "devDescription": "使用本機開發憑證。",
+      "credentialLabel": "DEV 管理憑證",
+      "credentialPlaceholder": "輸入 DEV_ADMIN_TOKEN",
+      "credentialHint": "憑證只暫存在目前分頁。",
+      "submitLabel": "驗證並進入"
+    },
+    "dashboard": {
+      "devBanner": "開發管理模式已啟用。",
+      "kicker": "REVIEW QUEUE",
+      "title": "投稿管理",
+      "description": "審核等待處理的匿名投稿。",
+      "refreshLabel": "重新整理",
+      "logoutLabel": "Logout",
+      "loadingLabel": "正在載入⋯",
+      "errorEyebrow": "CONNECTION ERROR",
+      "errorTitle": "無法載入投稿",
+      "errorBody": "請確認後端服務是否正常。",
+      "retryLabel": "重新載入",
+      "emptyEyebrow": "ALL CLEAR",
+      "emptyTitle": "目前沒有待審核投稿",
+      "emptyBody": "新的投稿會顯示在這裡。",
+      "emptyRefreshLabel": "重新整理",
+      "listAriaLabel": "待審核投稿清單"
+    },
+    "messages": {
+      "authenticating": "驗證中⋯",
+      "unknownTime": "時間未知",
+      "pendingCount": "待審核 {count} 篇",
+      "pendingBadge": "待審核",
+      "approve": "核准",
+      "reject": "拒絕",
+      "approving": "核准中⋯",
+      "rejecting": "拒絕中⋯",
+      "approveSuccess": "投稿 #{id} 已核准。",
+      "rejectSuccess": "投稿 #{id} 已拒絕。",
+      "rejectPrompt": "確定拒絕這篇投稿？",
+      "cancel": "取消",
+      "confirmReject": "確定拒絕",
+      "genericModerationError": "處理失敗，請再試一次。",
+      "authNotConfigured": "管理員登入尚未設定完成。",
+      "invalidCredential": "憑證無效，請重新輸入。",
+      "githubSessionExpired": "GitHub 管理員 session 已過期。",
+      "notAdministrator": "Unauthorized / Not an administrator",
+      "oauthCancelled": "GitHub 登入已取消。",
+      "oauthFailed": "GitHub 登入失敗，請重新嘗試。",
+      "signedOut": "已登出。",
+      "signedOutAuditWarning": "已登出，但稽核紀錄暫時無法寫入。",
+      "logoutFailed": "暫時無法登出，請再試一次。",
+      "backendUnavailable": "暫時無法連線到後端服務。",
+      "credentialTooShort": "請輸入至少 {min} 個字元的開發憑證。",
+      "defaultLoadError": "請確認後端服務是否正常。",
+      "username": "@{username}",
+      "role": "{role}"
+    }
+  },
+  "social": {
+    "title": "匿名投稿",
+    "description": "留下想說的話",
+    "image": "http://127.0.0.1:8787/og.png"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "anonymous-submissions-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --config wrangler.dev.jsonc",
+    "build": "wrangler deploy --dry-run --env production --outdir dist",
+    "build:pages": "node scripts/build-pages.js",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local --config wrangler.dev.jsonc",
+    "db:migrate:production": "wrangler d1 migrations apply DB --remote --env production",
+    "db:migrations:list:production": "wrangler d1 migrations list DB --remote --env production",
+    "bootstrap:owner": "node scripts/bootstrap-owner.js",
+    "generate:og": "node scripts/generate-og-svg.mjs",
+    "check": "node scripts/check-source.mjs",
+    "test": "node --test test/*.test.js",
+    "test:smoke": "node scripts/smoke-test.mjs",
+    "test:smoke:production": "node scripts/smoke-production.js"
+  },
+  "devDependencies": {
+    "wrangler": "4.127.1"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}

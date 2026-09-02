@@ -1,0 +1,45 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "anonymous-submissions-api",
+  "main": "worker/src/index.js",
+  "compatibility_date": "2026-08-31",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "env": {
+    "production": {
+      "name": "anonymous-submissions-api-production",
+      "workers_dev": false,
+      "vars": {
+        "APP_ENV": "production",
+        "ADMIN_AUTH_PROVIDER": "github",
+        "DEV_ADMIN_MODE": "false",
+        "GITHUB_CLIENT_ID": "REPLACE_WITH_PRODUCTION_GITHUB_CLIENT_ID",
+        "GITHUB_REDIRECT_URI": "https://api.example.com/api/auth/github/callback",
+        "FRONTEND_URL": "https://app.example.com/",
+        "ALLOWED_ORIGINS": "https://app.example.com",
+        "SESSION_TTL_SECONDS": "28800"
+      },
+      "secrets": {
+        "required": [
+          "GITHUB_CLIENT_SECRET",
+          "SESSION_SECRET"
+        ]
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "anonymous-submissions-production",
+          "database_id": "00000000-0000-0000-0000-000000000000",
+          "migrations_dir": "migrations"
+        }
+      ]
+      // Add api.example.com as a Custom Domain only after the Cloudflare zone
+      // is ready. Keeping routes out of source prevents a dry-run or initial
+      // deploy from changing DNS unexpectedly.
+    }
+  }
+}

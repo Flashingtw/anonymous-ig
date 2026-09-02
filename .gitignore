@@ -1,0 +1,15 @@
+node_modules/
+.wrangler/
+dist/
+.pages-dist/
+
+# Local runtime variables. Commit only the example files.
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.env
+.env.*
+!.env.example
+
+.DS_Store
+*.log
