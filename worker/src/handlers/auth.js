@@ -187,12 +187,20 @@ function callbackResultResponse(configuration, env, result, cookies = []) {
   ]);
 }
 
-function logOauthCallbackFailure(error) {
+function logOauthCallbackFailure(error, stage = "callback") {
   // Never log the callback URL, authorization code, state, token, cookies, or SQL.
   console.error("OAuth callback failed", JSON.stringify({
-    code: error instanceof HttpError ? error.code : "INTERNAL_ERROR",
-    errorName: error?.name ?? "UnknownError"
+    stage,
+    code: error instanceof HttpError ? error.code : "INTERNAL_ERROR"
   }));
+}
+
+function rejectOauthCallback(configuration, env, stage, code) {
+  logOauthCallbackFailure(
+    new HttpError(400, code, "OAuth callback validation failed."),
+    stage
+  );
+  return callbackResultResponse(configuration, env, "error");
 }
 
 async function exchangeGithubCode(configuration, code, verifier, fetchImpl) {
@@ -293,13 +301,14 @@ export async function githubCallbackHandler(
       const fallback = {
         frontendUrl: new URL("/", callbackUrl).href
       };
-      logOauthCallbackFailure(error);
+      logOauthCallbackFailure(error, "configuration");
       return callbackResultResponse(fallback, env, "error");
     } catch {
       throw error;
     }
   }
 
+  let stage = "callback_validation";
   try {
     const url = new URL(request.url);
     const expectedCallback = new URL(configuration.redirectUri);
@@ -313,14 +322,35 @@ export async function githubCallbackHandler(
       configuration.sessionSecret
     );
 
+    if (!callbackMatches) {
+      return rejectOauthCallback(
+        configuration,
+        env,
+        "callback_validation",
+        "OAUTH_CALLBACK_MISMATCH"
+      );
+    }
+
+    if (!oauthRequest) {
+      return rejectOauthCallback(
+        configuration,
+        env,
+        "oauth_request_cookie",
+        "OAUTH_REQUEST_COOKIE_INVALID"
+      );
+    }
+
     if (
-      !callbackMatches
-      || !oauthRequest
-      || !suppliedState
+      !suppliedState
       || suppliedState.length > 256
       || !timingSafeEqual(suppliedState, oauthRequest.state)
     ) {
-      return callbackResultResponse(configuration, env, "error");
+      return rejectOauthCallback(
+        configuration,
+        env,
+        "oauth_state",
+        "OAUTH_STATE_INVALID"
+      );
     }
 
     if (url.searchParams.has("error")) {
@@ -328,18 +358,26 @@ export async function githubCallbackHandler(
     }
 
     if (!code || code.length > 1024) {
-      return callbackResultResponse(configuration, env, "error");
+      return rejectOauthCallback(
+        configuration,
+        env,
+        "authorization_code",
+        "OAUTH_CODE_INVALID"
+      );
     }
 
+    stage = "token_exchange";
     const accessToken = await exchangeGithubCode(
       configuration,
       code,
       oauthRequest.verifier,
       fetchImpl
     );
+    stage = "profile_fetch";
     const profile = await fetchGithubUser(accessToken, fetchImpl);
     // The short-lived variable is intentionally discarded here; it is never persisted.
 
+    stage = "admin_lookup";
     const allowlistedAdmin = await findAdminByGithubUserId(
       env.DB,
       profile.githubUserId
@@ -348,6 +386,7 @@ export async function githubCallbackHandler(
       return callbackResultResponse(configuration, env, "unauthorized");
     }
 
+    stage = "admin_update";
     const admin = await updateAdminGithubUsername(
       env.DB,
       allowlistedAdmin.id,
@@ -357,6 +396,7 @@ export async function githubCallbackHandler(
       return callbackResultResponse(configuration, env, "unauthorized");
     }
 
+    stage = "session_create";
     const rawSessionToken = randomBase64Url(32);
     const tokenHash = await sha256Hex(rawSessionToken);
     const ttlSeconds = getSessionTtlSeconds(env);
@@ -380,7 +420,7 @@ export async function githubCallbackHandler(
       sessionCookie(rawSessionToken, ttlSeconds, env)
     ]);
   } catch (error) {
-    logOauthCallbackFailure(error);
+    logOauthCallbackFailure(error, stage);
     return callbackResultResponse(configuration, env, "error");
   }
 }

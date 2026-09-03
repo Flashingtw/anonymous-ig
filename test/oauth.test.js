@@ -229,17 +229,25 @@ test("an incorrect OAuth state redirects safely before GitHub is called", async 
   const env = testEnv(database.DB);
   const started = await beginLogin(env);
   let githubCalled = false;
+  const logged = [];
+  const originalConsoleError = console.error;
+  console.error = (...values) => logged.push(values.join(" "));
 
-  const response = await handleApiRequest(
-    new Request(`${CALLBACK_URL}?code=test-code&state=wrong-state`, {
-      headers: { Cookie: started.oauthCookie }
-    }),
-    env,
-    { fetchImpl: async () => {
-      githubCalled = true;
-      throw new Error("must not be called");
-    } }
-  );
+  let response;
+  try {
+    response = await handleApiRequest(
+      new Request(`${CALLBACK_URL}?code=test-code&state=wrong-state`, {
+        headers: { Cookie: started.oauthCookie }
+      }),
+      env,
+      { fetchImpl: async () => {
+        githubCalled = true;
+        throw new Error("must not be called");
+      } }
+    );
+  } finally {
+    console.error = originalConsoleError;
+  }
 
   assert.equal(response.status, 302);
   const location = new URL(response.headers.get("Location"));
@@ -250,6 +258,39 @@ test("an incorrect OAuth state redirects safely before GitHub is called", async 
   assert.equal(location.searchParams.has("state"), false);
   assert.equal(githubCalled, false);
   assert.match(response.headers.get("Set-Cookie"), /Max-Age=0/);
+  assert.match(logged.join("\n"), /"stage":"oauth_state"/);
+  assert.match(logged.join("\n"), /"code":"OAUTH_STATE_INVALID"/);
+  assert.doesNotMatch(logged.join("\n"), /wrong-state|test-code/);
+  assert.doesNotMatch(logged.join("\n"), /errorName/);
+});
+
+test("a missing OAuth request cookie logs only a fixed safe stage", async (t) => {
+  const database = createTestDatabase();
+  t.after(() => database.close());
+  const env = testEnv(database.DB);
+  const logged = [];
+  const originalConsoleError = console.error;
+  console.error = (...values) => logged.push(values.join(" "));
+
+  let response;
+  try {
+    response = await handleApiRequest(
+      new Request(`${CALLBACK_URL}?code=private-code&state=private-state`),
+      env
+    );
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assert.equal(response.status, 302);
+  assert.equal(
+    new URL(response.headers.get("Location")).search,
+    "?auth=error"
+  );
+  assert.match(logged.join("\n"), /"stage":"oauth_request_cookie"/);
+  assert.match(logged.join("\n"), /"code":"OAUTH_REQUEST_COOKIE_INVALID"/);
+  assert.doesNotMatch(logged.join("\n"), /private-code|private-state/);
+  assert.doesNotMatch(logged.join("\n"), /errorName/);
 });
 
 test("OAuth callback failures and cancellation return only fixed frontend results", async (t) => {
@@ -258,17 +299,28 @@ test("OAuth callback failures and cancellation return only fixed frontend result
   const env = testEnv(database.DB);
 
   const missingCode = await beginLogin(env);
-  const missingCodeResponse = await handleApiRequest(
-    new Request(`${CALLBACK_URL}?state=${encodeURIComponent(missingCode.state)}`, {
-      headers: { Cookie: missingCode.oauthCookie }
-    }),
-    env
-  );
+  const missingCodeLogged = [];
+  const originalMissingCodeConsoleError = console.error;
+  console.error = (...values) => missingCodeLogged.push(values.join(" "));
+  let missingCodeResponse;
+  try {
+    missingCodeResponse = await handleApiRequest(
+      new Request(`${CALLBACK_URL}?state=${encodeURIComponent(missingCode.state)}`, {
+        headers: { Cookie: missingCode.oauthCookie }
+      }),
+      env
+    );
+  } finally {
+    console.error = originalMissingCodeConsoleError;
+  }
   assert.equal(missingCodeResponse.status, 302);
   assert.equal(
     new URL(missingCodeResponse.headers.get("Location")).searchParams.get("auth"),
     "error"
   );
+  assert.match(missingCodeLogged.join("\n"), /"stage":"authorization_code"/);
+  assert.match(missingCodeLogged.join("\n"), /"code":"OAUTH_CODE_INVALID"/);
+  assert.doesNotMatch(missingCodeLogged.join("\n"), new RegExp(missingCode.state));
 
   const cancelled = await beginLogin(env);
   const cancelledResponse = await handleApiRequest(
@@ -304,6 +356,8 @@ test("OAuth callback failures and cancellation return only fixed frontend result
     assert.equal(githubFailureLocation.searchParams.get("auth"), "error");
     assert.equal(githubFailureLocation.href.includes("secret-code"), false);
     assert.equal(logged.join("\n").includes("secret-code"), false);
+    assert.match(logged.join("\n"), /"stage":"token_exchange"/);
+    assert.match(logged.join("\n"), /"code":"GITHUB_OAUTH_FAILED"/);
   } finally {
     console.error = originalConsoleError;
   }
