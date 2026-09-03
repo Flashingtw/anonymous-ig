@@ -8,7 +8,7 @@ Production 不使用自訂網域，分成公開網站與管理站兩個邊界：
 
 ```text
 https://flashingtw.github.io/anonymous-ig/   GitHub Pages 公開投稿頁
-https://<WORKER_SUBDOMAIN>.workers.dev/      Cloudflare Worker 管理後台 + API
+https://anonymous-submissions-api-production.flashingtw.workers.dev/      Cloudflare Worker 管理後台 + API
 ```
 
 這兩個網址是 **cross-site、different-origin**，因此不讓 GitHub Pages 承載管理 session：
@@ -16,7 +16,7 @@ https://<WORKER_SUBDOMAIN>.workers.dev/      Cloudflare Worker 管理後台 + AP
 - 公開投稿頁跨 origin 呼叫 Worker 時使用 `credentials: "omit"`；production CORS 只允許精確 origin `https://flashingtw.github.io`。Origin 不包含 `/anonymous-ig/` path。
 - 管理 UI 由 Worker assets 提供，與 `/api/auth/*`、`/api/admin/*` 完全同源，所有管理 API request 使用 `credentials: "include"`。
 - Pages 的 `/anonymous-ig/admin/` 只是一個不含管理程式碼的 handoff 頁，立即導向 Worker `/admin/`。
-- Session cookie 是 `<WORKER_SUBDOMAIN>.workers.dev` 的 host-only cookie，不設定 `Domain`，GitHub Pages 不需要、也不應讀取管理 session。
+- Session cookie 是 `anonymous-submissions-api-production.flashingtw.workers.dev` 的 host-only cookie，不設定 `Domain`，GitHub Pages 不需要、也不應讀取管理 session。
 
 主要功能：
 
@@ -192,11 +192,11 @@ DEV_ADMIN_TOKEN="至少 24 字元的本機隨機值"
 
 ```text
 https://flashingtw.github.io/anonymous-ig/admin/       （Pages handoff）
-→ https://<WORKER_SUBDOMAIN>.workers.dev/admin/
-→ https://<WORKER_SUBDOMAIN>.workers.dev/api/auth/github
+→ https://anonymous-submissions-api-production.flashingtw.workers.dev/admin/
+→ https://anonymous-submissions-api-production.flashingtw.workers.dev/api/auth/github
 → https://github.com/login/oauth/authorize
-→ https://<WORKER_SUBDOMAIN>.workers.dev/api/auth/github/callback
-→ https://<WORKER_SUBDOMAIN>.workers.dev/admin/?auth=<固定結果>
+→ https://anonymous-submissions-api-production.flashingtw.workers.dev/api/auth/github/callback
+→ https://anonymous-submissions-api-production.flashingtw.workers.dev/admin/?auth=<固定結果>
 ```
 
 成功、取消、非管理員與可恢復的 callback 錯誤都回到 Worker 管理頁。管理頁 URL 只會收到固定的 `success`、`cancelled`、`unauthorized` 或 `error`，載入後立即移除；不會收到 authorization code、state、GitHub token、session id 或 GitHub 的錯誤描述。
@@ -211,7 +211,7 @@ Production session cookie：
 HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=...; Expires=...
 ```
 
-- Cookie 是 `<WORKER_SUBDOMAIN>.workers.dev` 的 host-only cookie，不設定 `Domain`，也不會提供給 GitHub Pages。
+- Cookie 是 `anonymous-submissions-api-production.flashingtw.workers.dev` 的 host-only cookie，不設定 `Domain`，也不會提供給 GitHub Pages。
 - D1 只存 raw token 的 SHA-256 hash。
 - 預設期限 8 小時；`SESSION_TTL_SECONDS` 可設 900 秒到 7 天，且不自動延長。
 - Logout 刪除 D1 session 並清除同一路徑 cookie。
@@ -259,7 +259,7 @@ Workflow：`.github/workflows/deploy-pages.yml`
 
 | Repository Variable | 範例 | 限制 |
 | --- | --- | --- |
-| `PAGES_API_BASE_URL` | `https://<WORKER_SUBDOMAIN>.workers.dev` | 必須使用實際 deploy 回傳的 Worker HTTPS origin，不能有 path/query/hash |
+| `PAGES_API_BASE_URL` | `https://anonymous-submissions-api-production.flashingtw.workers.dev` | 必須使用實際 deploy 回傳的 Worker HTTPS origin，不能有 path/query/hash |
 | `PAGES_SITE_URL` | `https://flashingtw.github.io/anonymous-ig/` | 固定的 GitHub Pages project site URL，結尾要 `/` |
 
 這些 URL 是公開設定，不是 secret。不要建立 `GITHUB_CLIENT_SECRET` 或 `SESSION_SECRET` 的 Pages/Actions 變數。
@@ -296,8 +296,8 @@ Production variables：
 | `ADMIN_AUTH_PROVIDER` | `github` |
 | `DEV_ADMIN_MODE` | `false` |
 | `GITHUB_CLIENT_ID` | production OAuth App Client ID |
-| `GITHUB_REDIRECT_URI` | `https://<WORKER_SUBDOMAIN>.workers.dev/api/auth/github/callback` |
-| `FRONTEND_URL` | `https://<WORKER_SUBDOMAIN>.workers.dev/` |
+| `GITHUB_REDIRECT_URI` | `https://anonymous-submissions-api-production.flashingtw.workers.dev/api/auth/github/callback` |
+| `FRONTEND_URL` | `https://anonymous-submissions-api-production.flashingtw.workers.dev/` |
 | `PUBLIC_SITE_URL` | `https://flashingtw.github.io/anonymous-ig/` |
 | `ALLOWED_ORIGINS` | `https://flashingtw.github.io` |
 | `SESSION_TTL_SECONDS` | `28800` |
@@ -382,7 +382,7 @@ Script 會使用 `DB --remote --env production`，普通 `INSERT` 建立 owner�
 Worker `workers.dev` URL 與 GitHub Pages 都可用後執行：
 
 ```bash
-SMOKE_API_BASE_URL="https://<WORKER_SUBDOMAIN>.workers.dev" \
+SMOKE_API_BASE_URL="https://anonymous-submissions-api-production.flashingtw.workers.dev" \
 SMOKE_FRONTEND_ORIGIN="https://flashingtw.github.io" \
 npm run test:smoke:production
 ```
@@ -401,7 +401,7 @@ Script 只做：
 
 ## Production Deployment Checklist
 
-正式公開網址固定為 `https://flashingtw.github.io/anonymous-ig/`；管理/API 網址中的 `<WORKER_SUBDOMAIN>` 必須換成 Cloudflare 顯示的實際值。凡標記「網頁」的步驟都需要登入對應網站。此架構不需要購買網域、加入 Cloudflare zone、設定 DNS/CNAME 或建立 Custom Domain。
+正式公開網址固定為 `https://flashingtw.github.io/anonymous-ig/`；管理/API 網址固定為 `https://anonymous-submissions-api-production.flashingtw.workers.dev/`。凡標記「網頁」的步驟都需要登入對應網站。此架構不需要購買網域、加入 Cloudflare zone、設定 DNS/CNAME 或建立 Custom Domain。
 
 ### 0. Release gate（本機 CLI）
 
@@ -456,14 +456,14 @@ npx wrangler d1 create anonymous-submissions-production
 
 ### 5. 填入 D1 與正式 URLs（本機檔案）
 
-把 Cloudflare 回傳的 `database_name` 與 `database_id` 寫入 `wrangler.jsonc` 的 `env.production.d1_databases[0]`，確認 binding 名為 `DB`。將 `<WORKER_SUBDOMAIN>` 換成第 3 步確認的實際 origin，並核對：
+把 Cloudflare 回傳的 `database_name` 與 `database_id` 寫入 `wrangler.jsonc` 的 `env.production.d1_databases[0]`，確認 binding 名為 `DB`，並核對實際 Worker origin：
 
 ```text
 APP_ENV=production
 ADMIN_AUTH_PROVIDER=github
 DEV_ADMIN_MODE=false
-GITHUB_REDIRECT_URI=https://<WORKER_SUBDOMAIN>.workers.dev/api/auth/github/callback
-FRONTEND_URL=https://<WORKER_SUBDOMAIN>.workers.dev/
+GITHUB_REDIRECT_URI=https://anonymous-submissions-api-production.flashingtw.workers.dev/api/auth/github/callback
+FRONTEND_URL=https://anonymous-submissions-api-production.flashingtw.workers.dev/
 PUBLIC_SITE_URL=https://flashingtw.github.io/anonymous-ig/
 ALLOWED_ORIGINS=https://flashingtw.github.io
 SESSION_TTL_SECONDS=28800
@@ -505,7 +505,7 @@ npm run bootstrap:owner -- \
 GitHub **Settings → Developer settings → OAuth Apps → New OAuth App**：
 
 - Homepage URL：`https://flashingtw.github.io/anonymous-ig/`
-- Authorization callback URL：`https://<WORKER_SUBDOMAIN>.workers.dev/api/auth/github/callback`
+- Authorization callback URL：`https://anonymous-submissions-api-production.flashingtw.workers.dev/api/auth/github/callback`
 - Wildcard callback：關閉
 - Device Flow：關閉
 
@@ -520,8 +520,8 @@ APP_ENV=production
 ADMIN_AUTH_PROVIDER=github
 DEV_ADMIN_MODE=false
 GITHUB_CLIENT_ID=<production client id>
-GITHUB_REDIRECT_URI=https://<WORKER_SUBDOMAIN>.workers.dev/api/auth/github/callback
-FRONTEND_URL=https://<WORKER_SUBDOMAIN>.workers.dev/
+GITHUB_REDIRECT_URI=https://anonymous-submissions-api-production.flashingtw.workers.dev/api/auth/github/callback
+FRONTEND_URL=https://anonymous-submissions-api-production.flashingtw.workers.dev/
 PUBLIC_SITE_URL=https://flashingtw.github.io/anonymous-ig/
 ALLOWED_ORIGINS=https://flashingtw.github.io
 SESSION_TTL_SECONDS=28800
@@ -554,13 +554,13 @@ npm run build
 npx wrangler deploy --env production
 ```
 
-`npm run build` 是 dry-run；第二行才會實際部署。Required secrets 缺少時會拒絕 deploy。
+`npm run build` 是 dry-run；第二行才會實際部署。Wrangler 不會把 `secrets.required` 當成可靠的部署閘門，因此部署前必須用 `wrangler secret list` 親自確認兩個 secret 名稱都存在；Worker 在缺少 secret 時仍會於 OAuth runtime fail closed。
 
-確認 deploy 輸出的 URL 與 config 中的 `<WORKER_SUBDOMAIN>` 完全一致；若不一致，先修正 Worker variables 與 GitHub OAuth callback 再繼續。驗證：
+確認 deploy 輸出的 URL 與 config 中的 Worker origin 完全一致；若不一致，先修正 Worker variables 與 GitHub OAuth callback 再繼續。驗證：
 
 ```bash
 curl --fail --silent --show-error \
-  https://<WORKER_SUBDOMAIN>.workers.dev/api/health
+  https://anonymous-submissions-api-production.flashingtw.workers.dev/api/health
 ```
 
 應只得到 `{"ok":true}`。不需要進入 Domains & Routes，也不需要 Custom Domain。
@@ -568,7 +568,7 @@ curl --fail --silent --show-error \
 ### 12. 部署 GitHub Pages（GitHub 網頁，需要登入）
 
 1. Repository **Settings → Secrets and variables → Actions → Variables**：
-   - `PAGES_API_BASE_URL=https://<WORKER_SUBDOMAIN>.workers.dev`
+   - `PAGES_API_BASE_URL=https://anonymous-submissions-api-production.flashingtw.workers.dev`
    - `PAGES_SITE_URL=https://flashingtw.github.io/anonymous-ig/`
 2. **Settings → Pages → Build and deployment → Source** 選 **GitHub Actions**。
 3. 到 **Actions → Deploy frontend to GitHub Pages → Run workflow**，或再 push 一次 `main`。
@@ -580,7 +580,7 @@ curl --fail --silent --show-error \
 再次確認 Homepage 與 callback 完全一致，包括 scheme、hostname、path 與尾端 `/`。Callback 必須是：
 
 ```text
-https://<WORKER_SUBDOMAIN>.workers.dev/api/auth/github/callback
+https://anonymous-submissions-api-production.flashingtw.workers.dev/api/auth/github/callback
 ```
 
 OAuth App Homepage 必須是 `https://flashingtw.github.io/anonymous-ig/`；callback 則是 Worker，不可填 Pages `/admin/`。
@@ -588,7 +588,7 @@ OAuth App Homepage 必須是 `https://flashingtw.github.io/anonymous-ig/`；call
 ### 14. 驗證 health 與 CORS（本機 CLI）
 
 ```bash
-SMOKE_API_BASE_URL="https://<WORKER_SUBDOMAIN>.workers.dev" \
+SMOKE_API_BASE_URL="https://anonymous-submissions-api-production.flashingtw.workers.dev" \
 SMOKE_FRONTEND_ORIGIN="https://flashingtw.github.io" \
 npm run test:smoke:production
 ```
