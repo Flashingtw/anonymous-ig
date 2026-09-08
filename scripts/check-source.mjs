@@ -7,6 +7,7 @@ const files = [];
 
 function collect(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (entry.name.startsWith("._")) continue;
     const path = join(directory, entry.name);
     if (entry.isDirectory()) {
       collect(path);

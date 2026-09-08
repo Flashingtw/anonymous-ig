@@ -67,7 +67,7 @@ export async function moderateSubmissionHandler(
   const auditAction = action === "approve"
     ? "approve_submission"
     : "reject_submission";
-  const result = principal.provider === "github"
+  const result = principal.provider !== "dev"
     ? await updatePendingSubmissionStatusWithAudit(env.DB, id, nextStatus, {
       adminId: principal.adminId,
       action: auditAction,

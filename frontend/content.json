@@ -40,7 +40,11 @@
     "auth": {
       "kicker": "ADMIN ACCESS",
       "title": "進入管理",
-      "description": "使用 GitHub 管理員帳號登入。",
+      "description": "使用管理員帳號密碼或 GitHub 登入。",
+      "usernameLabel": "管理員帳號",
+      "passwordLabel": "密碼",
+      "localSubmitLabel": "登入管理後台",
+      "dividerLabel": "或",
       "githubSignInLabel": "Sign in with GitHub",
       "githubHint": "只會讀取 GitHub 公開身份。",
       "devKicker": "DEVELOPMENT ACCESS",
@@ -96,7 +100,26 @@
       "credentialTooShort": "請輸入至少 {min} 個字元的開發憑證。",
       "defaultLoadError": "請確認後端服務是否正常。",
       "username": "@{username}",
-      "role": "{role}"
+      "role": "{role}",
+      "localLoginFailed": "帳號或密碼錯誤。",
+      "localLoginRateLimited": "登入嘗試次數過多，請稍後再試。",
+      "passwordSaving": "儲存中⋯",
+      "passwordMismatch": "新密碼與確認密碼不一致。",
+      "passwordTooShort": "新密碼需為 8–128 個字元，且不可只有空白。",
+      "passwordChanged": "密碼已更新，其他裝置的登入狀態已失效。",
+      "passwordChangeFailed": "暫時無法修改密碼，請再試一次。",
+      "sessionExpired": "管理員登入已過期，請重新登入。"
+    },
+    "password": {
+      "kicker": "ACCOUNT SECURITY",
+      "title": "修改密碼",
+      "toggleLabel": "修改密碼",
+      "cancelLabel": "收起",
+      "currentLabel": "目前密碼",
+      "newLabel": "新密碼",
+      "confirmLabel": "確認新密碼",
+      "hint": "請使用 8–128 個字元，且不可只有空白。",
+      "submitLabel": "儲存新密碼"
     }
   },
   "social": {

@@ -6,7 +6,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "migrations_dir": "migrations"
+      "migrations_dir": "migrations",
+      "migrations_pattern": "migrations/[0-9][0-9][0-9][0-9]_*.sql"
     }
   ],
   "env": {
@@ -24,13 +25,18 @@
       "vars": {
         "APP_ENV": "production",
         "ADMIN_AUTH_PROVIDER": "github",
+        "ADMIN_AUTH_PROVIDERS": "github,local",
+        "LOCAL_AUTH_ENABLED": "false",
         "DEV_ADMIN_MODE": "false",
         "GITHUB_CLIENT_ID": "Ov23limhw9mn3O2c0j2D",
         "GITHUB_REDIRECT_URI": "https://anonymous-submissions-api-production.flashingtw.workers.dev/api/auth/github/callback",
         "FRONTEND_URL": "https://anonymous-submissions-api-production.flashingtw.workers.dev/",
         "PUBLIC_SITE_URL": "https://flashingtw.github.io/anonymous-ig/",
         "ALLOWED_ORIGINS": "https://flashingtw.github.io",
-        "SESSION_TTL_SECONDS": "28800"
+        "SESSION_TTL_SECONDS": "28800",
+        "LOGIN_RATE_LIMIT_MAX_ATTEMPTS": "5",
+        "LOGIN_RATE_LIMIT_WINDOW_SECONDS": "900",
+        "LOGIN_RATE_LIMIT_BLOCK_SECONDS": "900"
       },
       "secrets": {
         "required": [
@@ -43,7 +49,8 @@
           "binding": "DB",
           "database_name": "anonymous-submissions-production",
           "database_id": "281ce1f3-dcdb-4d13-a749-709dee63043f",
-          "migrations_dir": "migrations"
+          "migrations_dir": "migrations",
+          "migrations_pattern": "migrations/[0-9][0-9][0-9][0-9]_*.sql"
         }
       ]
       // The public submission page is on GitHub Pages. The sensitive admin UI

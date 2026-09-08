@@ -20,6 +20,11 @@ import {
   logoutHandler
 } from "./handlers/auth.js";
 import { healthHandler } from "./handlers/health.js";
+import {
+  authProvidersHandler,
+  changePasswordHandler,
+  localLoginHandler
+} from "./handlers/local-auth.js";
 
 const ADMIN_HTML_CSP = [
   "default-src 'self'",
@@ -121,6 +126,20 @@ export async function routeApi(request, env, dependencies = {}) {
     return githubLoginHandler(request, env);
   }
 
+  if (pathname === "/api/auth/providers") {
+    if (request.method !== "GET") {
+      return methodNotAllowed(["GET"]);
+    }
+    return authProvidersHandler(request, env);
+  }
+
+  if (pathname === "/api/auth/login") {
+    if (request.method !== "POST") {
+      return methodNotAllowed(["POST"]);
+    }
+    return localLoginHandler(request, env, dependencies);
+  }
+
   if (pathname === "/api/auth/github/callback") {
     if (request.method !== "GET") {
       return methodNotAllowed(["GET"]);
@@ -168,6 +187,13 @@ export async function routeApi(request, env, dependencies = {}) {
     }
 
     return listPendingSubmissionsHandler(request, env, principal);
+  }
+
+  if (pathname === "/api/admin/account/password") {
+    if (request.method !== "POST") {
+      return methodNotAllowed(["POST"]);
+    }
+    return changePasswordHandler(request, env, principal);
   }
 
   const moderationMatch = pathname.match(

@@ -5,12 +5,42 @@ import { handleApiRequest } from "../worker/src/index.js";
 import { updatePendingSubmissionStatusWithAudit } from "../worker/src/repositories/submissions.js";
 import { clearSessionCookie } from "../worker/src/security/cookies.js";
 import { sha256Base64Url } from "../worker/src/security/crypto.js";
+import { runCli } from "../scripts/manage-admin.js";
 import { createTestDatabase } from "./helpers/d1.js";
 
 const ORIGIN = "http://127.0.0.1:8787";
 const CALLBACK_URL = `${ORIGIN}/api/auth/github/callback`;
 const SESSION_SECRET = "test-session-secret-with-more-than-thirty-two-characters";
 const MOCK_ACCESS_TOKEN = "github-test-access-token-never-persist";
+
+test("CLI binding makes GitHub and local login resolve to the same existing owner", async (t) => {
+  const database = createTestDatabase();
+  t.after(() => database.close());
+  const env = testEnv(database.DB, { ADMIN_AUTH_PROVIDERS: "github,local", LOCAL_AUTH_ENABLED: "true" });
+  const adminId = await seedAdmin(database.DB, { role: "owner" });
+  const password = "dual identity test passphrase";
+  await runCli(["bind-local", "--github-user-id", "101", "--username", "Dual.User", "--local", "--execute"], {
+    query: async ({ sql }) => database.raw.prepare(sql).all(),
+    execute: async ({ sql }) => database.raw.exec(sql),
+    passwordReader: async () => password,
+    logger: { log() {} }
+  });
+  const github = await completeLogin(env, { id: 101, login: "renamed-on-github" });
+  assert.equal(new URL(github.response.headers.get("Location")).searchParams.get("auth"), "success");
+  const local = await handleApiRequest(new Request(`${ORIGIN}/api/auth/login`, {
+    method: "POST", headers: { "Content-Type": "application/json", Origin: ORIGIN },
+    body: JSON.stringify({ username: "DUAL.USER", password })
+  }), env);
+  assert.equal(local.status, 200);
+  const data = (await local.json()).data;
+  assert.deepEqual(data.user.authMethods, ["github", "local"]);
+  assert.equal(data.user.githubUsername, "renamed-on-github");
+  assert.equal(data.user.role, "owner");
+  assert.equal(database.raw.prepare("SELECT COUNT(*) AS n FROM admins").get().n, 1);
+  const sessions = database.raw.prepare("SELECT admin_id FROM admin_sessions").all();
+  assert.equal(sessions.length, 2);
+  assert.ok(sessions.every((session) => session.admin_id === adminId));
+});
 
 function testEnv(DB, overrides = {}) {
   return {
@@ -505,8 +535,10 @@ test("admin login, approve, reject, audit, and logout form one valid session flo
   const me = await getSession(env, login.sessionCookie);
   assert.equal(me.response.status, 200);
   assert.deepEqual(me.payload.data.user, {
+    username: null,
     githubUsername: "current-name",
-    role: "admin"
+    role: "admin",
+    authMethods: ["github"]
   });
   assert.ok(me.payload.data.csrfToken);
 

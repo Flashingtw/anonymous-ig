@@ -3,9 +3,24 @@ import { adminAuth } from "./admin-auth.js";
 import { formatText, getContent, loadContent } from "./content.js";
 
 const MIN_DEV_TOKEN_LENGTH = 24;
+const MIN_PASSWORD_LENGTH = 8;
+const passwordSegmenter = new Intl.Segmenter(undefined, {
+  granularity: "grapheme"
+});
+
 const messages = {
   authenticating: "驗證中⋯",
   authSubmitLabel: "驗證並進入",
+  localSubmitLabel: "登入管理後台",
+  localLoginFailed: "帳號或密碼錯誤。",
+  localLoginRateLimited: "登入嘗試次數過多，請稍後再試。",
+  passwordSubmitLabel: "儲存新密碼",
+  passwordSaving: "儲存中⋯",
+  passwordMismatch: "新密碼與確認密碼不一致。",
+  passwordTooShort: "新密碼需為 8–128 個字元，且不可只有空白。",
+  passwordChanged: "密碼已更新，其他裝置的登入狀態已失效。",
+  passwordChangeFailed: "暫時無法修改密碼，請再試一次。",
+  sessionExpired: "管理員登入已過期，請重新登入。",
   unknownTime: "時間未知",
   pendingCount: "待審核 {count} 篇",
   pendingBadge: "待審核",
@@ -60,16 +75,24 @@ const retryButton = document.querySelector("#retry-button");
 const emptyRefreshButton = document.querySelector("#empty-refresh-button");
 const clearAuthButton = document.querySelector("#clear-auth-button");
 
-// Set the cross-origin Worker URL before editable content finishes loading.
-if (adminAuth.mode === "github") {
-  githubSignIn.href = adminAuth.signInUrl();
-}
+const sessionAuthPanel = document.querySelector("#session-auth-panel");
+const localAuthForm = document.querySelector("#local-auth-form");
+const localUsernameInput = document.querySelector("#local-username");
+const localPasswordInput = document.querySelector("#local-password");
+const localAuthSubmit = document.querySelector("#local-auth-submit");
+const authDivider = document.querySelector("#auth-divider");
+const passwordFormToggle = document.querySelector("#password-form-toggle");
+const passwordAccountPanel = document.querySelector("#password-account-panel");
+const passwordFormCancel = document.querySelector("#password-form-cancel");
+const passwordChangeForm = document.querySelector("#password-change-form");
+const currentPasswordInput = document.querySelector("#current-password");
+const newPasswordInput = document.querySelector("#new-password");
+const confirmPasswordInput = document.querySelector("#confirm-password");
+const passwordChangeSubmit = document.querySelector("#password-change-submit");
+const passwordFormStatus = document.querySelector("#password-form-status");
+let enabledAuthProviders = Object.freeze({ github: false, local: false });
 
-function setAuthBusy(isBusy) {
-  if (!adminAuth.requiresCredentialEntry) {
-    return;
-  }
-
+function setDevAuthBusy(isBusy) {
   authTokenInput.disabled = isBusy;
   authSubmit.disabled = isBusy;
   authSubmit.querySelector("span").textContent = isBusy
@@ -81,25 +104,33 @@ function setAuthBusy(isBusy) {
 function renderIdentity() {
   const identity = adminAuth.identity();
   adminUsername.textContent = formatText(messages.username, {
-    username: identity?.githubUsername ?? ""
+    username: identity?.username ?? identity?.githubUsername ?? ""
   });
   adminRole.textContent = formatText(messages.role, {
     role: identity?.role ?? ""
   });
+  passwordFormToggle.hidden = !hasLocalIdentity() || adminAuth.mode === "dev";
 }
 
 function showAuth(message = "") {
   dashboard.hidden = true;
   authPanel.hidden = false;
   authError.textContent = message;
+  authError.hidden = !message;
   adminUsername.textContent = "";
   adminRole.textContent = "";
-
-  if (adminAuth.requiresCredentialEntry) {
+  passwordFormToggle.hidden = true;
+  closePasswordForm();
+  if (adminAuth.mode === "dev") {
     authTokenInput.value = "";
     authTokenInput.focus();
-  } else {
+  } else if (enabledAuthProviders.local) {
+    localPasswordInput.value = "";
+    localUsernameInput.focus();
+  } else if (enabledAuthProviders.github) {
     githubSignIn.focus();
+  } else {
+    authError.focus();
   }
 }
 
@@ -107,6 +138,81 @@ function showDashboard() {
   authPanel.hidden = true;
   dashboard.hidden = false;
   renderIdentity();
+}
+
+function setLocalAuthBusy(isBusy) {
+  localUsernameInput.disabled = isBusy;
+  localPasswordInput.disabled = isBusy;
+  localAuthSubmit.disabled = isBusy;
+  localAuthSubmit.querySelector("span").textContent = isBusy
+    ? messages.authenticating
+    : messages.localSubmitLabel;
+  localAuthForm.setAttribute("aria-busy", String(isBusy));
+}
+
+function setPasswordBusy(isBusy) {
+  for (const input of [currentPasswordInput, newPasswordInput, confirmPasswordInput]) {
+    input.disabled = isBusy;
+  }
+  passwordChangeSubmit.disabled = isBusy;
+  passwordFormCancel.disabled = isBusy;
+  passwordChangeSubmit.textContent = isBusy
+    ? messages.passwordSaving
+    : messages.passwordSubmitLabel;
+  passwordChangeForm.setAttribute("aria-busy", String(isBusy));
+}
+
+function hasLocalIdentity() {
+  return adminAuth.identity()?.authMethods?.includes("local") === true;
+}
+
+function clearPasswordFields() {
+  currentPasswordInput.value = "";
+  newPasswordInput.value = "";
+  confirmPasswordInput.value = "";
+  for (const input of [currentPasswordInput, newPasswordInput, confirmPasswordInput]) {
+    input.removeAttribute("aria-invalid");
+  }
+}
+
+function closePasswordForm({ restoreFocus = false } = {}) {
+  passwordAccountPanel.hidden = true;
+  passwordFormToggle.setAttribute("aria-expanded", "false");
+  passwordFormStatus.textContent = "";
+  clearPasswordFields();
+  if (restoreFocus && !passwordFormToggle.hidden) {
+    passwordFormToggle.focus();
+  }
+}
+
+function openPasswordForm() {
+  passwordAccountPanel.hidden = false;
+  passwordFormToggle.setAttribute("aria-expanded", "true");
+  passwordFormStatus.textContent = "";
+  currentPasswordInput.focus();
+}
+
+function showPasswordStatus(message, { error = false, field } = {}) {
+  passwordFormStatus.textContent = message;
+  passwordFormStatus.classList.toggle("is-error", error);
+  if (field) {
+    field.setAttribute("aria-invalid", "true");
+    field.focus();
+    return;
+  }
+  passwordFormStatus.focus();
+}
+
+function showLocalAuthError(message) {
+  authError.hidden = false;
+  authError.textContent = message;
+  localUsernameInput.setAttribute("aria-invalid", "true");
+  localPasswordInput.setAttribute("aria-invalid", "true");
+  localPasswordInput.focus();
+}
+
+function passwordGraphemeLength(value) {
+  return [...passwordSegmenter.segment(value)].length;
 }
 
 function setQueueView(view) {
@@ -281,7 +387,7 @@ function handleAuthFailure(error) {
     ? messages.authNotConfigured
     : adminAuth.requiresCredentialEntry
       ? messages.invalidCredential
-      : messages.githubSessionExpired;
+      : messages.sessionExpired;
   showAuth(message);
 }
 
@@ -317,7 +423,7 @@ async function loadSubmissions({ authenticating = false } = {}) {
     setQueueView("error");
   } finally {
     refreshButton.disabled = false;
-    setAuthBusy(false);
+    setDevAuthBusy(false);
   }
 }
 
@@ -331,58 +437,96 @@ function consumeAuthResult() {
   return result;
 }
 
-function configureAuthMode(content) {
+function configureAuthMode(content, providerData = {}) {
   const isDev = adminAuth.mode === "dev";
-  githubAuthPanel.hidden = isDev;
+  enabledAuthProviders = Object.freeze({
+    github: !isDev && providerData.github === true,
+    local: !isDev && providerData.local === true
+  });
+  sessionAuthPanel.hidden = isDev;
+  localAuthForm.hidden = !enabledAuthProviders.local;
+  githubAuthPanel.hidden = !enabledAuthProviders.github;
+  authDivider.hidden = !(enabledAuthProviders.local && enabledAuthProviders.github);
   authForm.hidden = !isDev;
   devBanner.hidden = !isDev;
   githubSignIn.href = adminAuth.signInUrl();
-
   if (isDev) {
-    authKicker.textContent = getContent(
-      content,
-      "admin.auth.devKicker",
-      "DEVELOPMENT ACCESS"
-    );
-    authDescription.textContent = getContent(
-      content,
-      "admin.auth.devDescription",
-      "使用本機開發憑證。"
-    );
+    authKicker.textContent = getContent(content, "admin.auth.devKicker", "DEVELOPMENT ACCESS");
+    authDescription.textContent = getContent(content, "admin.auth.devDescription", "使用本機開發憑證。");
   }
 }
 
-async function initializeGithub(authResult) {
+async function initializeSession(authResult) {
   if (authResult === "unauthorized") {
     showAuth(messages.notAdministrator);
     return;
   }
-
   if (authResult === "cancelled") {
     showAuth(messages.oauthCancelled);
     return;
   }
-
   if (authResult === "error") {
     showAuth(messages.oauthFailed);
     return;
   }
-
   try {
     const session = await apiRequest("/api/auth/me");
     adminAuth.setSession(session);
     await loadSubmissions();
   } catch (error) {
     if (error instanceof ApiClientError && error.status === 401) {
-      showAuth(authResult === "success" ? messages.githubSessionExpired : "");
+      const noProviderEnabled = !enabledAuthProviders.local && !enabledAuthProviders.github;
+      showAuth(authResult === "success"
+        ? messages.githubSessionExpired
+        : noProviderEnabled
+          ? messages.authNotConfigured
+          : "");
       return;
     }
-
     showAuth(error instanceof ApiClientError && error.status === 503
       ? messages.authNotConfigured
       : messages.backendUnavailable);
   }
 }
+
+localAuthForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const username = localUsernameInput.value.trim();
+  const password = localPasswordInput.value;
+  authError.textContent = "";
+  authError.hidden = true;
+  localUsernameInput.removeAttribute("aria-invalid");
+  localPasswordInput.removeAttribute("aria-invalid");
+  if (!username || !password) {
+    showLocalAuthError(messages.localLoginFailed);
+    return;
+  }
+
+  setLocalAuthBusy(true);
+  try {
+    const session = await apiRequest("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password })
+    });
+    adminAuth.setSession(session);
+    localUsernameInput.value = "";
+    localPasswordInput.value = "";
+    await loadSubmissions();
+  } catch (error) {
+    const message = error instanceof ApiClientError && error.status === 429
+      ? messages.localLoginRateLimited
+      : error instanceof ApiClientError && error.status === 401
+        ? messages.localLoginFailed
+        : error instanceof ApiClientError && error.status === 503
+          ? messages.authNotConfigured
+          : messages.backendUnavailable;
+    localPasswordInput.value = "";
+    showLocalAuthError(message);
+  } finally {
+    setLocalAuthBusy(false);
+  }
+});
 
 authForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -398,9 +542,96 @@ authForm.addEventListener("submit", async (event) => {
 
   authError.textContent = "";
   adminAuth.setCredential(token);
-  setAuthBusy(true);
+  setDevAuthBusy(true);
   await loadSubmissions({ authenticating: true });
 });
+
+passwordFormToggle.addEventListener("click", () => {
+  if (passwordAccountPanel.hidden) {
+    openPasswordForm();
+  } else {
+    closePasswordForm({ restoreFocus: true });
+  }
+});
+
+passwordFormCancel.addEventListener("click", () => {
+  closePasswordForm({ restoreFocus: true });
+});
+
+passwordChangeForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const currentPassword = currentPasswordInput.value;
+  const newPassword = newPasswordInput.value;
+  const confirmPassword = confirmPasswordInput.value;
+  passwordFormStatus.textContent = "";
+  passwordFormStatus.classList.remove("is-error");
+  for (const input of [currentPasswordInput, newPasswordInput, confirmPasswordInput]) {
+    input.removeAttribute("aria-invalid");
+  }
+
+  if (newPassword !== confirmPassword) {
+    showPasswordStatus(messages.passwordMismatch, {
+      error: true,
+      field: confirmPasswordInput
+    });
+    return;
+  }
+  if (
+    passwordGraphemeLength(newPassword) < MIN_PASSWORD_LENGTH
+    || !newPassword.trim()
+  ) {
+    showPasswordStatus(messages.passwordTooShort, {
+      error: true,
+      field: newPasswordInput
+    });
+    return;
+  }
+
+  setPasswordBusy(true);
+  try {
+    const session = await apiRequest("/api/admin/account/password", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...adminAuth.requestHeaders({ mutation: true })
+      },
+      body: JSON.stringify({ currentPassword, newPassword, confirmPassword })
+    });
+    adminAuth.setSession(session);
+    clearPasswordFields();
+    showPasswordStatus(messages.passwordChanged);
+  } catch (error) {
+    if (error instanceof ApiClientError && error.code === "INVALID_CURRENT_PASSWORD") {
+      currentPasswordInput.value = "";
+      showPasswordStatus(error.message, { error: true, field: currentPasswordInput });
+      return;
+    }
+    if (error instanceof ApiClientError && [401, 403].includes(error.status)) {
+      handleAuthFailure(error);
+      return;
+    }
+    const field = error instanceof ApiClientError
+      && error.code === "PASSWORD_CONFIRMATION_MISMATCH"
+      ? confirmPasswordInput
+      : error instanceof ApiClientError && error.code === "PASSWORD_POLICY_INVALID"
+        ? newPasswordInput
+        : undefined;
+    showPasswordStatus(
+      error instanceof ApiClientError ? error.message : messages.passwordChangeFailed,
+      { error: true, field }
+    );
+  } finally {
+    setPasswordBusy(false);
+  }
+});
+
+for (const input of [localUsernameInput, localPasswordInput]) {
+  input.addEventListener("input", () => {
+    input.removeAttribute("aria-invalid");
+    authError.textContent = "";
+    authError.hidden = true;
+  });
+}
 
 refreshButton.addEventListener("click", () => loadSubmissions());
 retryButton.addEventListener("click", () => loadSubmissions());
@@ -429,7 +660,7 @@ clearAuthButton.addEventListener("click", async () => {
 
     if (error instanceof ApiClientError && [401, 403].includes(error.status)) {
       adminAuth.clearCredential();
-      showAuth(messages.githubSessionExpired);
+      showAuth(messages.sessionExpired);
       return;
     }
     announce(messages.logoutFailed);
@@ -440,17 +671,25 @@ clearAuthButton.addEventListener("click", async () => {
 
 loadContent().then(async (content) => {
   Object.assign(messages, getContent(content, "admin.messages", {}));
-  messages.authSubmitLabel = getContent(
-    content,
-    "admin.auth.submitLabel",
-    messages.authSubmitLabel
-  );
-  configureAuthMode(content);
+  messages.authSubmitLabel = getContent(content, "admin.auth.submitLabel", messages.authSubmitLabel);
+  messages.localSubmitLabel = getContent(content, "admin.auth.localSubmitLabel", messages.localSubmitLabel);
+  messages.passwordSubmitLabel = getContent(content, "admin.password.submitLabel", messages.passwordSubmitLabel);
   const authResult = consumeAuthResult();
-
-  if (adminAuth.mode === "github") {
-    await initializeGithub(authResult);
-  } else {
+  if (adminAuth.mode === "dev") {
+    configureAuthMode(content);
     await loadSubmissions();
+    return;
   }
+
+  try {
+    const data = await apiRequest("/api/auth/providers");
+    configureAuthMode(content, data.providers);
+  } catch (error) {
+    configureAuthMode(content);
+    showAuth(error instanceof ApiClientError && error.status === 503
+      ? messages.authNotConfigured
+      : messages.backendUnavailable);
+    return;
+  }
+  await initializeSession(authResult);
 });

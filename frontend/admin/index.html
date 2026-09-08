@@ -29,19 +29,58 @@
         <div class="auth-copy">
           <p id="auth-kicker" class="kicker" data-copy="admin.auth.kicker">ADMIN ACCESS</p>
           <h1 id="auth-title" class="admin-auth-title" data-copy="admin.auth.title">進入管理</h1>
-          <p id="auth-description" data-copy="admin.auth.description">使用 GitHub 管理員帳號登入。</p>
+          <p id="auth-description" data-copy="admin.auth.description">使用管理員帳號密碼或 GitHub 登入。</p>
         </div>
 
         <div class="panel auth-panel">
-          <div id="github-auth-panel">
-            <a id="github-sign-in" class="button button--primary button--wide" href="/api/auth/github">
-              <span data-copy="admin.auth.githubSignInLabel">Sign in with GitHub</span>
-              <span aria-hidden="true">→</span>
-            </a>
-            <p class="field__hint" data-copy="admin.auth.githubHint">只會讀取 GitHub 公開身份。</p>
+          <div id="session-auth-panel" class="auth-stack" hidden>
+            <form id="local-auth-form" class="auth-form" novalidate hidden>
+              <div class="auth-field">
+                <label for="local-username" data-copy="admin.auth.usernameLabel">管理員帳號</label>
+                <input
+                  id="local-username"
+                  name="username"
+                  type="text"
+                  autocomplete="username"
+                  autocapitalize="none"
+                  spellcheck="false"
+                  maxlength="32"
+                  aria-describedby="auth-error"
+                  required
+                >
+              </div>
+              <div class="auth-field">
+                <label for="local-password" data-copy="admin.auth.passwordLabel">密碼</label>
+                <input
+                  id="local-password"
+                  name="password"
+                  type="password"
+                  autocomplete="current-password"
+                  maxlength="1024"
+                  aria-describedby="auth-error"
+                  required
+                >
+              </div>
+              <button id="local-auth-submit" class="button button--primary button--wide" type="submit">
+                <span data-copy="admin.auth.localSubmitLabel">登入管理後台</span>
+                <span aria-hidden="true">→</span>
+              </button>
+            </form>
+
+            <div id="auth-divider" class="auth-divider" role="separator" hidden>
+              <span data-copy="admin.auth.dividerLabel">或</span>
+            </div>
+
+            <div id="github-auth-panel" hidden>
+              <a id="github-sign-in" class="button button--primary button--wide" href="/api/auth/github">
+                <span data-copy="admin.auth.githubSignInLabel">Sign in with GitHub</span>
+                <span aria-hidden="true">→</span>
+              </a>
+              <p class="field__hint" data-copy="admin.auth.githubHint">只會讀取 GitHub 公開身份。</p>
+            </div>
           </div>
 
-          <form id="admin-auth-form" novalidate hidden>
+          <form id="admin-auth-form" class="auth-form" novalidate hidden>
             <label for="admin-token" data-copy="admin.auth.credentialLabel">DEV 管理憑證</label>
             <input
               id="admin-token"
@@ -61,7 +100,7 @@
               <span aria-hidden="true">→</span>
             </button>
           </form>
-          <p id="auth-error" class="field__error" aria-live="polite"></p>
+          <p id="auth-error" class="field__error" role="alert" aria-live="assertive" tabindex="-1"></p>
         </div>
       </section>
 
@@ -84,9 +123,39 @@
             </span>
             <span id="pending-count" class="count-badge">待審核 0 篇</span>
             <button id="refresh-button" class="button button--secondary" type="button" data-copy="admin.dashboard.refreshLabel">重新整理</button>
+            <button id="password-form-toggle" class="button button--secondary" type="button" aria-expanded="false" aria-controls="password-account-panel" data-copy="admin.password.toggleLabel" hidden>修改密碼</button>
             <button id="clear-auth-button" class="button button--quiet" type="button" data-copy="admin.dashboard.logoutLabel">Logout</button>
           </div>
         </div>
+
+        <section id="password-account-panel" class="panel account-panel" aria-labelledby="password-account-title" hidden>
+          <div class="account-panel__heading">
+            <div>
+              <p class="step-label" data-copy="admin.password.kicker">ACCOUNT SECURITY</p>
+              <h2 id="password-account-title" data-copy="admin.password.title">修改密碼</h2>
+            </div>
+            <button id="password-form-cancel" class="button button--quiet" type="button" data-copy="admin.password.cancelLabel">收起</button>
+          </div>
+          <form id="password-change-form" class="password-change-form" novalidate>
+            <div class="auth-field">
+              <label for="current-password" data-copy="admin.password.currentLabel">目前密碼</label>
+              <input id="current-password" name="currentPassword" type="password" autocomplete="current-password" maxlength="1024" required>
+            </div>
+            <div class="auth-field">
+              <label for="new-password" data-copy="admin.password.newLabel">新密碼</label>
+              <input id="new-password" name="newPassword" type="password" autocomplete="new-password" maxlength="1024" aria-describedby="password-hint password-form-status" required>
+            </div>
+            <div class="auth-field">
+              <label for="confirm-password" data-copy="admin.password.confirmLabel">確認新密碼</label>
+              <input id="confirm-password" name="confirmPassword" type="password" autocomplete="new-password" maxlength="1024" aria-describedby="password-form-status" required>
+            </div>
+            <p id="password-hint" class="field__hint" data-copy="admin.password.hint">請使用 8–128 個字元，且不可只有空白。</p>
+            <div class="password-change-form__actions">
+              <button id="password-change-submit" class="button button--primary" type="submit" data-copy="admin.password.submitLabel">儲存新密碼</button>
+            </div>
+          </form>
+          <p id="password-form-status" class="account-panel__status" role="status" aria-live="polite" tabindex="-1"></p>
+        </section>
 
         <div id="queue-status" class="sr-only" role="status" aria-live="polite"></div>
 

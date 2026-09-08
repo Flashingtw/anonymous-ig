@@ -63,7 +63,10 @@ async function readTextWithLimit(request, maxBytes) {
   return text + decoder.decode();
 }
 
-export async function parseJsonBody(request) {
+export async function parseJsonObject(
+  request,
+  { allowedKeys, maxBytes = MAX_REQUEST_BYTES } = {}
+) {
   const contentType = request.headers.get("Content-Type") ?? "";
   const mediaType = contentType.split(";", 1)[0].trim().toLowerCase();
   if (mediaType !== "application/json") {
@@ -74,7 +77,7 @@ export async function parseJsonBody(request) {
     );
   }
 
-  const rawBody = await readTextWithLimit(request, MAX_REQUEST_BYTES);
+  const rawBody = await readTextWithLimit(request, maxBytes);
   let value;
 
   try {
@@ -87,13 +90,21 @@ export async function parseJsonBody(request) {
     throw new HttpError(400, "INVALID_BODY", "請求內容格式不正確。")
   }
 
-  const allowedKeys = new Set(["content", "captchaToken"]);
-  const unexpectedKeys = Object.keys(value).filter((key) => !allowedKeys.has(key));
+  const allowed = allowedKeys ? new Set(allowedKeys) : null;
+  const unexpectedKeys = allowed
+    ? Object.keys(value).filter((key) => !allowed.has(key))
+    : [];
   if (unexpectedKeys.length > 0) {
     throw new HttpError(400, "UNEXPECTED_FIELDS", "請求包含不支援的欄位。")
   }
 
   return value;
+}
+
+export async function parseJsonBody(request) {
+  return parseJsonObject(request, {
+    allowedKeys: ["content", "captchaToken"]
+  });
 }
 
 export function parsePositiveInteger(value, label = "ID") {

@@ -1,8 +1,8 @@
 import {
   authorizeAdmin,
   createCsrfToken,
-  getAdminAuthProvider,
   getSessionTtlSeconds,
+  isAdminAuthProviderEnabled,
   requireSessionSecret,
   verifyAdminCsrf
 } from "../auth.js";
@@ -18,6 +18,7 @@ import {
 } from "../repositories/sessions.js";
 import {
   OAUTH_REQUEST_COOKIE_NAME,
+  SESSION_COOKIE_NAME,
   clearOauthRequestCookie,
   clearSessionCookie,
   oauthRequestCookie,
@@ -77,7 +78,7 @@ function validatePublicUrl(value, env) {
 }
 
 function githubConfiguration(env) {
-  if (getAdminAuthProvider(env) !== "github") {
+  if (!isAdminAuthProviderEnabled(env, "github")) {
     throw configurationError();
   }
 
@@ -401,11 +402,16 @@ export async function githubCallbackHandler(
     const tokenHash = await sha256Hex(rawSessionToken);
     const ttlSeconds = getSessionTtlSeconds(env);
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
-    await createAdminSession(env.DB, {
+    const previousRawToken = parseCookies(request).get(SESSION_COOKIE_NAME) ?? "";
+    const replaceTokenHash = previousRawToken && previousRawToken.length <= 256
+      ? await sha256Hex(previousRawToken)
+      : null;
+    const created = await createAdminSession(env.DB, {
       tokenHash,
       adminId: admin.id,
       expiresAt
     }, {
+      replaceTokenHash,
       audit: {
         adminId: admin.id,
         action: "login",
@@ -415,6 +421,9 @@ export async function githubCallbackHandler(
         }
       }
     });
+    if (!created) {
+      return callbackResultResponse(configuration, env, "unauthorized");
+    }
 
     return callbackResultResponse(configuration, env, "success", [
       sessionCookie(rawSessionToken, ttlSeconds, env)
@@ -432,8 +441,11 @@ export async function authMeHandler(_request, env, principal) {
     ok: true,
     data: {
       user: {
-        githubUsername: principal.githubUsername,
-        role: principal.role
+        username: principal.username ?? null,
+        githubUsername: principal.githubUsername ?? null,
+        role: principal.role,
+        authMethods: principal.authMethods
+          ?? (principal.githubUsername ? ["github"] : [])
       },
       csrfToken,
       expiresAt: principal.expiresAt ?? null
@@ -445,7 +457,7 @@ export async function logoutHandler(request, env, principal) {
   authorizeAdmin(principal);
   await verifyAdminCsrf(request, principal, env);
 
-  if (principal.provider === "github") {
+  if (principal.provider !== "dev") {
     try {
       await deleteAdminSession(env.DB, principal.sessionTokenHash, {
         audit: {

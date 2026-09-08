@@ -5,7 +5,7 @@ import {
   rm,
   writeFile
 } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -127,7 +127,10 @@ export async function buildPages({
 
   await rm(output, { recursive: true, force: true });
   await mkdir(output, { recursive: true });
-  await cp(source, output, { recursive: true });
+  await cp(source, output, {
+    recursive: true,
+    filter: (path) => !basename(path).startsWith("._") && basename(path) !== ".DS_Store"
+  });
 
   const apiOrigin = apiUrl.origin;
   const socialImage = new URL("og.png", frontendUrl).href;

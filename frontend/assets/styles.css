@@ -221,7 +221,8 @@ output.is-over-limit {
 }
 
 textarea,
-input[type="password"] {
+input[type="password"],
+input[type="text"] {
   width: 100%;
   color: var(--ink);
   border: 1px solid var(--line-strong);
@@ -237,7 +238,8 @@ textarea {
   resize: vertical;
 }
 
-input[type="password"] {
+input[type="password"],
+input[type="text"] {
   min-height: 48px;
   padding: 10px 14px;
 }
@@ -675,4 +677,105 @@ a:focus-visible {
   .skeleton-card {
     animation: none;
   }
+}
+
+/* Local-account login and password change; production theme stays unchanged. */
+.auth-stack,
+.auth-form {
+  display: grid;
+  min-width: 0;
+}
+
+.auth-stack {
+  gap: 20px;
+}
+
+.auth-form {
+  gap: 16px;
+}
+
+.auth-field {
+  min-width: 0;
+}
+
+.auth-form .button--wide,
+#github-auth-panel .button--wide {
+  margin-top: 2px;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  font-weight: 750;
+  text-align: center;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  height: 1px;
+  flex: 1;
+  background: var(--line);
+  content: "";
+}
+
+.account-panel {
+  margin-bottom: 28px;
+  padding: clamp(20px, 4vw, 28px);
+  overflow: hidden;
+}
+
+.account-panel__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.account-panel__heading h2 {
+  margin-bottom: 0;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+}
+
+.password-change-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px 16px;
+  align-items: end;
+}
+
+.password-change-form .field__hint,
+.password-change-form__actions {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.password-change-form__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.account-panel__status {
+  min-height: 1.5em;
+  margin: 14px 0 0;
+  color: var(--success);
+  font-size: 0.84rem;
+  font-weight: 700;
+  outline: none;
+}
+
+.account-panel__status.is-error {
+  color: var(--danger);
+}
+
+
+@media (max-width: 640px) {
+  .admin-identity { width: 100%; overflow-wrap: anywhere; }
+  .admin-toolbar .button { max-width: 100%; }
+  .password-change-form { grid-template-columns: 1fr; }
+  .password-change-form__actions .button { width: 100%; }
 }

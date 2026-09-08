@@ -1,7 +1,13 @@
 # Copy this file to .dev.vars for local Wrangler development.
 # These are placeholders only. Never commit the real file or reuse production secrets.
+# Default local environment: port 8787 and .wrangler/state/. The isolated 8788
+# test database is separate; see README before creating an account.
+# Account passwords: 8–128 graphemes, at most 1024 UTF-8 bytes, not all whitespace.
+# Passwords belong only in the CLI hidden prompt, never in this file.
 APP_ENV="development"
 ADMIN_AUTH_PROVIDER="github"
+ADMIN_AUTH_PROVIDERS="github,local"
+LOCAL_AUTH_ENABLED="true"
 
 # Create a separate GitHub OAuth App for local development.
 GITHUB_CLIENT_ID="replace-with-local-oauth-client-id"
@@ -10,8 +16,12 @@ GITHUB_REDIRECT_URI="http://127.0.0.1:8787/api/auth/github/callback"
 FRONTEND_URL="http://127.0.0.1:8787/"
 SESSION_SECRET="replace-with-at-least-32-random-characters"
 SESSION_TTL_SECONDS="28800"
+LOGIN_RATE_LIMIT_MAX_ATTEMPTS="5"
+LOGIN_RATE_LIMIT_WINDOW_SECONDS="900"
+LOGIN_RATE_LIMIT_BLOCK_SECONDS="900"
 
-# Emergency local-only fallback. To use it, set provider=dev and mode=true.
+# Emergency local-only fallback. Set ADMIN_AUTH_PROVIDERS="dev",
+# LOCAL_AUTH_ENABLED="false", and mode=true.
 # This is rejected whenever APP_ENV is not exactly development.
 DEV_ADMIN_MODE="false"
 DEV_ADMIN_TOKEN="replace-with-at-least-24-random-characters"
@@ -19,7 +29,8 @@ DEV_ADMIN_TOKEN="replace-with-at-least-24-random-characters"
 # Exact comma-separated frontend origins. Same-origin requests work without it.
 ALLOWED_ORIGINS="http://127.0.0.1:8787,http://localhost:8787,http://localhost:8000"
 
-# Phase-one anti-abuse adapters are disabled but already wired into POST.
+# Public submission anti-abuse only; LOGIN_RATE_LIMIT_* above independently
+# protects local-account login whenever LOCAL_AUTH_ENABLED is true.
 RATE_LIMITING_ENABLED="false"
 RATE_LIMIT_RETRY_AFTER_SECONDS="60"
 CAPTCHA_ENABLED="false"

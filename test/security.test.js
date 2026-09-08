@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { authenticateAdmin, __testables } from "../worker/src/auth.js";
+import {
+  authenticateAdmin,
+  getAdminAuthProviders,
+  __testables
+} from "../worker/src/auth.js";
 import { corsDecision, handlePreflight } from "../worker/src/http.js";
 import worker, { handleApiRequest } from "../worker/src/index.js";
 import { createTestDatabase } from "./helpers/d1.js";
@@ -35,6 +39,31 @@ test("development auth fails closed outside development", async () => {
       DEV_ADMIN_TOKEN: validToken
     }),
     (error) => error.code === "ADMIN_AUTH_NOT_CONFIGURED"
+  );
+});
+
+test("multi-provider config preserves GitHub and requires an explicit local-auth switch", () => {
+  assert.deepEqual(
+    [...getAdminAuthProviders({
+      ADMIN_AUTH_PROVIDER: "github",
+      ADMIN_AUTH_PROVIDERS: "github,local",
+      LOCAL_AUTH_ENABLED: "false"
+    })],
+    ["github"]
+  );
+  assert.deepEqual(
+    [...getAdminAuthProviders({
+      ADMIN_AUTH_PROVIDER: "github",
+      ADMIN_AUTH_PROVIDERS: "github,local",
+      LOCAL_AUTH_ENABLED: "true"
+    })],
+    ["github", "local"]
+  );
+  assert.deepEqual(
+    [...getAdminAuthProviders({
+      ADMIN_AUTH_PROVIDER: "github"
+    })],
+    ["github"]
   );
 });
 
