@@ -6,6 +6,8 @@
 
 本 README 是操作與規則入口；[登入實作報告](docs/local-auth-implementation.md) 記錄安全設計與驗證，[部署狀態快照](docs/deployment-status.md) 記錄有日期的線上查詢結果。歷史驗證成功不等於功能已部署，也不等於正式帳號已建立。
 
+4.5 本機階段已凍結於 `19f18c73ca5e3a4a4831cd045a603b14b0724be4`（101/101 tests）；後續 CI／部署準備另行提交，不改写此 checkpoint。任何人或自動化代理在部署前都必須先讀本 README 與 `docs/deployment-status.md`，再重新查證遠端，不得只依舊對話推測 production 狀態。
+
 - 本機新版：GitHub OAuth 保留，新增一般帳號密碼登入；正式站目前仍是舊版 GitHub 登入。
 - 帳號：3–32 個英數字或 `_`、`-`、`.`，登入不分大小寫。密碼：8–128 個使用者可見字元，不限數字、不可全空白，另有 1024 UTF-8 bytes 上限。
 - 建立管理員只使用受信任 CLI；沒有公開註冊。新增帳號預設 `moderator`；`owner`、`admin` 必須明確指定，不會因使用帳密登入而自動升權。
@@ -525,7 +527,7 @@ npm run db:migrations:list:production
 0004_add_local_admin_auth.sql
 ```
 
-`0003` 與 `0004` 是目前未發布變更；因 CLI 缺少可用 Cloudflare 憑證，正式 D1 是否已套用尚未查證，不可宣稱遠端缺少或已有它們。先備份、核對 pending 清單並驗證升級相容性，再經明確授權套用。帳密 schema 依賴 `0003`，但不需要先啟用實際產圖；只有包含產圖的 release 才需要另完成字型、renderer、R2 與 visual fixtures。文件中的 remote 指令是操作手冊，不代表執行授權。
+`0003` 與 `0004` 是目前未發布變更；因 CLI 缺少可用 Cloudflare 憑證，正式 D1 是否已套用尚未查證，不可宣稱遠端缺少或已有它們。先備份、核對 pending 清單並驗證升級相容性，再經明確授權套用。`0004` 本身只依賴 `0001`／`0002` 的既有表，不依賴 `0003`、R2、renderer 或字型；但目前完整 checkpoint 的投稿查詢包含 `0003` 欄位，不能將「0004 可單獨套用」誤當「整個 checkpoint 不需要 0003」。只有包含實際產圖的 release 才需要另完成字型、renderer、R2 與 visual fixtures。文件中的 remote 指令是操作手冊，不代表執行授權。
 
 確認目標 database 名稱與檔案後再套用：
 
@@ -600,6 +602,10 @@ Script 只做：
 5. 確認 CPU 預算後，在受控發布步驟將 `LOCAL_AUTH_ENABLED=true` 並部署，才測試正式帳密登入、錯誤限流、改密碼與登出；開關關閉時不能完成帳密登入驗證。異常時關回 `false` 並部署，保留 GitHub OAuth；不要直接回滾或刪除正式 schema。
 6. Worker API 驗證完成後，才將已審查的 release 合併／push 到 `main` 觸發 Pages。GitHub Actions 只部署 Pages，不會部署 Worker、套用 D1 或建立帳號；不得先發布依賴新版 API 的前端。
 7. 核對 Pages workflow、公開頁、Worker `/admin/` 與授權的端到端測試，更新 [部署狀態快照](docs/deployment-status.md)，記錄實際版本、時間與未驗證項目。
+
+不可把上述順序改成「先部署新版、再套 schema」：GitHub admin／session 查詢即使在 `LOCAL_AUTH_ENABLED=false` 仍會讀取 `0004` 新增欄位。若自己已有 GitHub owner，應在經確認的同一筆 `admins.id` 上綁定 local identity；目前 `add-local` 只新增資料，`set-password` 只重設既有 local identity，兩者都不是 GitHub 帳號綁定工具。尚未提供安全的 owner 綁定操作流程，必須在啟用前另行核准準備，不用建立第二筆 owner 代替。朋友的 moderator 於 owner 雙登入驗證成功後才建立。
+
+`.github/workflows/validate.yml` 在 `codex/**` push／對 `main` 的 PR 執行純驗證，分別 checkout 固定 4.5 checkpoint 與當次版本，執行 `check`、`test`、Worker dry-run build、audit。它只有 `contents: read`、不使用 production secrets，不部署 Pages／Worker、不執行 remote migrations。Pages 仍只由原本的部署 workflow 發布；保存 checkpoint 時不要 push `main`。
 
 下方編號 0–18 保留作「全新環境首次建置」參考，不是目前站點必須重跑的清單；其中 remote writes、推送、部署與測試投稿都需要明確授權。Bash 區塊的 `\` 續行與前置環境變數語法不可直接貼入 PowerShell；Windows 請合併指令為單行並以 `$env:變數名稱` 設定環境變數。
 

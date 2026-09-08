@@ -32,3 +32,13 @@ Cloudflare CLI 的 `deployments list --env production` 與 `d1 migrations list D
 - 真實 GitHub OAuth 完整登入，以及正式帳密登入、改密碼、登出等端到端結果。
 
 此輪沒有提交投稿、建立正式帳號、套用 migration、修改 secret 或部署。下一次發布按 README 的「既有站更新順序」進行，不重跑首次建站步驟。
+
+## 4.5 凍結與 rollout 前置檢查（2026-09-08）
+
+- 已建立本機 checkpoint commit：`19f18c73ca5e3a4a4831cd045a603b14b0724be4`，訊息 `Add local admin authentication`，分支 `codex/daan-brand-renderer`。上方「尚未 commit」僅描述 18:58 查詢當時狀態。
+- checkpoint 保留 101/101 通過的完整工作區，包括原有但未完成的品牌／renderer 基礎；沒有繼續修改產圖。它不是已拆分的 local-auth-only 部署套件。
+- 後續獨立的 `validate.yml` 只做 CI，分別驗證固定 checkpoint 與当前版本；push 此分支不符合 Pages 的 main 自動部署條件。CI 成功與否應查對應 commit 的 Actions，不由本機結果推測。
+- 本機唯讀 schema 探針確認：新版 `findAdminByGithubUserId` 在 `0001＋0002` schema 上因缺少 `username` 失敗。這與 local 開關無關，因此正式操作必須先核對／升級 schema，再部署新版。
+- 在同一探針直接套 `0004`（跳過 `0003`）成功，既有 owner、session、audit 與 foreign keys 保留；沒有 R2、renderer 或字型依賴。這不代表已對正式 D1 驗證；完整工作區的投稿查詢仍需要 `0003` 欄位。
+- 自己的 local owner 應綁定既有 GitHub owner 的同一筆 identity。現有 CLI 沒有綁定指令，不能用 `add-local` 建立第二筆 owner 充當綁定；這是正式啟用前的待辦，不是 4.5 功能需求變更。
+- 尚未部署 Worker／Pages、套用 production migration、建立正式 owner 或朋友帳號。正式 rollout 仍受 Cloudflare 授權、schema／備份確認及 owner 綁定流程限制。

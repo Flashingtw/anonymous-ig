@@ -1,0 +1,57 @@
+name: Validate local-auth checkpoint (no deploy)
+
+on:
+  push:
+    branches:
+      - 'codex/**'
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: frozen-4.5
+            ref: 19f18c73ca5e3a4a4831cd045a603b14b0724be4
+          - label: current
+            ref: ${{ github.sha }}
+    steps:
+      - name: Check out exact revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ matrix.ref }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Check source
+        run: npm run check
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build Worker without deployment
+        run: npm run build
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=low
