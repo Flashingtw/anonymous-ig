@@ -2,7 +2,17 @@ const ALLOWED_ACTIONS = new Set([
   "login",
   "logout",
   "approve_submission",
-  "reject_submission"
+  "reject_submission",
+  "render_submission",
+  "regenerate_submission",
+  "render_failed",
+  "local_login_success",
+  "local_login_failed",
+  "password_changed",
+  "admin_account_created",
+  "admin_account_disabled",
+  "admin_account_enabled",
+  "admin_role_changed"
 ]);
 
 function auditValues({ adminId, action, submissionId = null, metadata = null }) {
@@ -16,6 +26,10 @@ function auditValues({ adminId, action, submissionId = null, metadata = null }) 
     submissionId,
     serializedMetadata: metadata === null ? null : JSON.stringify(metadata)
   };
+}
+
+export async function writeAuditLog(db, entry) {
+  return prepareAuditLog(db, entry).first();
 }
 
 export function prepareAuditLog(

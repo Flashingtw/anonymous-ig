@@ -13,22 +13,30 @@ function apiUrl(path) {
   return `${baseUrl}${path}`;
 }
 
-export async function apiRequest(path, options = {}) {
-  let response;
+async function request(path, options, accept) {
   const { headers = {}, ...requestOptions } = options;
-
   try {
-    response = await fetch(apiUrl(path), {
+    return await fetch(apiUrl(path), {
       credentials: "include",
       ...requestOptions,
-      headers: {
-        Accept: "application/json",
-        ...headers
-      }
+      headers: { Accept: accept, ...headers }
     });
   } catch {
     throw new ApiClientError("無法連線到服務，請檢查網路後再試。");
   }
+}
+
+async function responseError(response) {
+  const payload = await response.json().catch(() => null);
+  return new ApiClientError(payload?.error?.message ?? "請求失敗。", {
+    status: response.status,
+    code: payload?.error?.code ?? "REQUEST_FAILED",
+    details: payload?.error?.details
+  });
+}
+
+export async function apiRequest(path, options = {}) {
+  const response = await request(path, options, "application/json");
 
   let payload;
   try {
@@ -41,12 +49,29 @@ export async function apiRequest(path, options = {}) {
   }
 
   if (!response.ok || payload.ok !== true) {
-    throw new ApiClientError(payload.error?.message ?? "請求失敗。", {
+    throw new ApiClientError(payload?.error?.message ?? "請求失敗。", {
       status: response.status,
-      code: payload.error?.code ?? "REQUEST_FAILED",
-      details: payload.error?.details
+      code: payload?.error?.code ?? "REQUEST_FAILED",
+      details: payload?.error?.details
     });
   }
 
   return payload.data;
+}
+
+export async function apiBinaryRequest(path, options = {}) {
+  const response = await request(path, options, "image/png,image/jpeg");
+  if (!response.ok) {
+    throw await responseError(response);
+  }
+
+  const contentType = response.headers.get("Content-Type")?.split(";", 1)[0] ?? "";
+  if (!new Set(["image/png", "image/jpeg"]).has(contentType)) {
+    throw new ApiClientError("服務回應的圖片格式不正確。", {
+      status: response.status,
+      code: "INVALID_IMAGE_RESPONSE"
+    });
+  }
+
+  return response.blob();
 }

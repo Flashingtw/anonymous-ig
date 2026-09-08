@@ -5,7 +5,7 @@ const MAX_CONTENT_LENGTH = 1000;
 const messages = {
   characterCount: "{current} / {max} 字",
   sending: "送出中⋯",
-  submitLabel: "送出投稿",
+  submitLabel: "匿名送出",
   emptyContent: "請輸入投稿內容。",
   tooLong: "內容最多 {max} 字，目前超出 {over} 字。",
   genericSubmitError: "暫時無法送出，請稍後再試。",

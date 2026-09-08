@@ -1,27 +1,29 @@
 {
   "site": {
-    "brandMark": "匿",
-    "brandName": "匿名投稿",
-    "footerTagline": "PRIVATE BY DEFAULT",
-    "footerCopyright": "© {year} ANONYMOUS INBOX"
+    "brandMark": "大",
+    "brandName": "大安匿名",
+    "brandEnglish": "DAAN ANONYMOUS",
+    "footerTagline": "DAAN ANONYMOUS / SPEAK FREELY",
+    "footerCopyright": "© {year} 大安匿名"
   },
   "publicPage": {
-    "pageTitle": "匿名投稿",
-    "metaDescription": "不需登入的匿名投稿頁，投稿將先由管理員審核。",
-    "homeAriaLabel": "匿名投稿首頁",
-    "eyebrow": "OPEN INBOX",
-    "kicker": "匿名・免登入",
-    "title": "留下想說的話",
-    "description": "送出後會先審核。",
+    "pageTitle": "大安匿名｜DAAN ANONYMOUS",
+    "metaDescription": "大安匿名是免登入的校園匿名投稿平台，投稿將經管理員審核後發布。",
+    "homeAriaLabel": "大安匿名首頁",
+    "eyebrow": "OPEN INBOX / 106",
+    "kicker": "DAAN ANONYMOUS",
+    "title": "大安匿名",
+    "englishTitle": "DAAN ANONYMOUS",
+    "description": "想說什麼，都可以留在這裡。",
     "form": {
-      "stepLabel": "01 / WRITE",
+      "stepLabel": "WRITE IT DOWN",
       "title": "匿名投稿",
       "privacyBadge": "匿名",
       "contentLabel": "投稿內容",
       "placeholder": "在這裡寫下內容⋯",
       "privacyHint": "請勿留下可辨識身分的資訊。",
-      "submitLabel": "送出投稿",
-      "consent": "內容可能經整理後公開刊登。"
+      "submitLabel": "匿名送出",
+      "consent": "投稿將經管理員審核後發布。"
     },
     "messages": {
       "characterCount": "{current} / {max} 字",
@@ -34,13 +36,17 @@
     }
   },
   "admin": {
-    "pageTitle": "投稿管理",
-    "homeAriaLabel": "回到匿名投稿首頁",
+    "pageTitle": "大安匿名｜投稿管理",
+    "homeAriaLabel": "回到大安匿名首頁",
     "eyebrow": "MODERATION",
     "auth": {
       "kicker": "ADMIN ACCESS",
       "title": "進入管理",
-      "description": "使用 GitHub 管理員帳號登入。",
+      "description": "使用管理員帳號密碼或 GitHub 登入。",
+      "usernameLabel": "管理員帳號",
+      "passwordLabel": "密碼",
+      "localSubmitLabel": "登入管理後台",
+      "dividerLabel": "或",
       "githubSignInLabel": "Sign in with GitHub",
       "githubHint": "只會讀取 GitHub 公開身份。",
       "devKicker": "DEVELOPMENT ACCESS",
@@ -49,6 +55,17 @@
       "credentialPlaceholder": "輸入 DEV_ADMIN_TOKEN",
       "credentialHint": "憑證只暫存在目前分頁。",
       "submitLabel": "驗證並進入"
+    },
+    "password": {
+      "kicker": "ACCOUNT SECURITY",
+      "title": "修改密碼",
+      "toggleLabel": "修改密碼",
+      "cancelLabel": "收起",
+      "currentLabel": "目前密碼",
+      "newLabel": "新密碼",
+      "confirmLabel": "確認新密碼",
+      "hint": "請使用 8–128 個字元，且不可只有空白。",
+      "submitLabel": "儲存新密碼"
     },
     "dashboard": {
       "devBanner": "開發管理模式已啟用。",
@@ -66,13 +83,51 @@
       "emptyTitle": "目前沒有待審核投稿",
       "emptyBody": "新的投稿會顯示在這裡。",
       "emptyRefreshLabel": "重新整理",
-      "listAriaLabel": "待審核投稿清單"
+      "listAriaLabel": "待審核投稿清單",
+      "tabs": {
+        "ariaLabel": "投稿狀態",
+        "pending": "待審核",
+        "approved": "已核准",
+        "rejected": "已拒絕"
+      },
+      "listAriaLabels": {
+        "pending": "待審核投稿清單",
+        "approved": "已核准投稿清單",
+        "rejected": "已拒絕投稿清單"
+      },
+      "empty": {
+        "pending": {
+          "eyebrow": "ALL CLEAR",
+          "title": "目前沒有待審核投稿",
+          "body": "新的投稿會顯示在這裡。"
+        },
+        "approved": {
+          "eyebrow": "NO APPROVED POSTS",
+          "title": "目前沒有已核准投稿",
+          "body": "核准後的投稿會顯示在這裡。"
+        },
+        "rejected": {
+          "eyebrow": "NO REJECTED POSTS",
+          "title": "目前沒有已拒絕投稿",
+          "body": "拒絕的投稿會保留在這裡供管理員查看。"
+        }
+      }
     },
     "messages": {
       "authenticating": "驗證中⋯",
+      "localLoginFailed": "帳號或密碼錯誤。",
+      "localLoginRateLimited": "登入嘗試次數過多，請稍後再試。",
+      "passwordSaving": "儲存中⋯",
+      "passwordMismatch": "新密碼與確認密碼不一致。",
+      "passwordTooShort": "新密碼需為 8–128 個字元，且不可只有空白。",
+      "passwordChanged": "密碼已更新，其他裝置的登入狀態已失效。",
+      "passwordChangeFailed": "暫時無法修改密碼，請再試一次。",
+      "sessionExpired": "管理員登入已過期，請重新登入。",
       "unknownTime": "時間未知",
       "pendingCount": "待審核 {count} 篇",
       "pendingBadge": "待審核",
+      "approvedBadge": "已核准",
+      "rejectedBadge": "已拒絕",
       "approve": "核准",
       "reject": "拒絕",
       "approving": "核准中⋯",
@@ -97,11 +152,30 @@
       "defaultLoadError": "請確認後端服務是否正常。",
       "username": "@{username}",
       "role": "{role}"
+    },
+    "render": {
+      "statusLabel": "Render status: {status}",
+      "statuses": {
+        "notRendered": "Not rendered",
+        "rendering": "Rendering",
+        "ready": "Ready",
+        "failed": "Failed"
+      },
+      "generatePreview": "Generate Preview",
+      "generatingPreview": "Generating…",
+      "preview": "Preview",
+      "regenerate": "Regenerate",
+      "regenerating": "Regenerating…",
+      "success": "投稿 #{id} 的預覽圖片已產生。",
+      "failed": "圖片產生失敗，請再試一次。",
+      "tooLong": "投稿內容太長，無法產生貼文圖片。",
+      "notConfigured": "正式圖片字型或儲存空間尚未設定完成。",
+      "previewAlt": "投稿 #{id} 的貼文預覽"
     }
   },
   "social": {
-    "title": "匿名投稿",
-    "description": "留下想說的話",
+    "title": "大安匿名｜DAAN ANONYMOUS",
+    "description": "想說什麼，都可以留在這裡。",
     "image": "http://127.0.0.1:8787/og.png"
   }
 }

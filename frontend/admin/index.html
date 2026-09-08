@@ -5,21 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex,nofollow">
     <meta name="referrer" content="no-referrer">
-    <meta name="theme-color" content="#f4f1ea">
+    <meta name="theme-color" content="#171512">
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'self'"
+      content="default-src 'self'; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'self'"
     >
-    <title data-copy="admin.pageTitle">投稿管理</title>
+    <title data-copy="admin.pageTitle">大安匿名｜投稿管理</title>
     <link rel="stylesheet" href="../assets/styles.css">
     <script src="../config.js"></script>
     <script src="../assets/admin.js" type="module"></script>
   </head>
   <body class="admin-page">
     <header class="site-header container">
-      <a class="brand" href="../" aria-label="回到匿名投稿首頁" data-copy="admin.homeAriaLabel" data-copy-attribute="aria-label">
-        <span class="brand__mark" aria-hidden="true" data-copy="site.brandMark">匿</span>
-        <span data-copy="site.brandName">匿名投稿</span>
+      <a class="brand" href="../" aria-label="回到大安匿名首頁" data-copy="admin.homeAriaLabel" data-copy-attribute="aria-label">
+        <span class="brand__mark" aria-hidden="true" data-copy="site.brandMark">大</span>
+        <span class="brand__wordmark">
+          <strong data-copy="site.brandName">大安匿名</strong>
+          <small data-copy="site.brandEnglish">DAAN ANONYMOUS</small>
+        </span>
       </a>
       <span class="eyebrow" data-copy="admin.eyebrow">MODERATION</span>
     </header>
@@ -29,19 +32,58 @@
         <div class="auth-copy">
           <p id="auth-kicker" class="kicker" data-copy="admin.auth.kicker">ADMIN ACCESS</p>
           <h1 id="auth-title" class="admin-auth-title" data-copy="admin.auth.title">進入管理</h1>
-          <p id="auth-description" data-copy="admin.auth.description">使用 GitHub 管理員帳號登入。</p>
+          <p id="auth-description" data-copy="admin.auth.description">使用管理員帳號密碼或 GitHub 登入。</p>
         </div>
 
         <div class="panel auth-panel">
-          <div id="github-auth-panel">
-            <a id="github-sign-in" class="button button--primary button--wide" href="/api/auth/github">
-              <span data-copy="admin.auth.githubSignInLabel">Sign in with GitHub</span>
-              <span aria-hidden="true">→</span>
-            </a>
-            <p class="field__hint" data-copy="admin.auth.githubHint">只會讀取 GitHub 公開身份。</p>
+          <div id="session-auth-panel" class="auth-stack" hidden>
+            <form id="local-auth-form" class="auth-form" novalidate hidden>
+              <div class="auth-field">
+                <label for="local-username" data-copy="admin.auth.usernameLabel">管理員帳號</label>
+                <input
+                  id="local-username"
+                  name="username"
+                  type="text"
+                  autocomplete="username"
+                  autocapitalize="none"
+                  spellcheck="false"
+                  maxlength="32"
+                  aria-describedby="auth-error"
+                  required
+                >
+              </div>
+              <div class="auth-field">
+                <label for="local-password" data-copy="admin.auth.passwordLabel">密碼</label>
+                <input
+                  id="local-password"
+                  name="password"
+                  type="password"
+                  autocomplete="current-password"
+                  maxlength="1024"
+                  aria-describedby="auth-error"
+                  required
+                >
+              </div>
+              <button id="local-auth-submit" class="button button--primary button--wide" type="submit">
+                <span data-copy="admin.auth.localSubmitLabel">登入管理後台</span>
+                <span aria-hidden="true">→</span>
+              </button>
+            </form>
+
+            <div id="auth-divider" class="auth-divider" role="separator" hidden>
+              <span data-copy="admin.auth.dividerLabel">或</span>
+            </div>
+
+            <div id="github-auth-panel" hidden>
+              <a id="github-sign-in" class="button button--primary button--wide" href="/api/auth/github">
+                <span data-copy="admin.auth.githubSignInLabel">Sign in with GitHub</span>
+                <span aria-hidden="true">→</span>
+              </a>
+              <p class="field__hint" data-copy="admin.auth.githubHint">只會讀取 GitHub 公開身份。</p>
+            </div>
           </div>
 
-          <form id="admin-auth-form" novalidate hidden>
+          <form id="admin-auth-form" class="auth-form" novalidate hidden>
             <label for="admin-token" data-copy="admin.auth.credentialLabel">DEV 管理憑證</label>
             <input
               id="admin-token"
@@ -61,7 +103,7 @@
               <span aria-hidden="true">→</span>
             </button>
           </form>
-          <p id="auth-error" class="field__error" aria-live="polite"></p>
+          <p id="auth-error" class="field__error" role="alert" aria-live="assertive" tabindex="-1"></p>
         </div>
       </section>
 
@@ -82,37 +124,87 @@
               <span id="admin-username"></span>
               <span id="admin-role" class="role-badge"></span>
             </span>
-            <span id="pending-count" class="count-badge">待審核 0 篇</span>
+            <button id="password-form-toggle" class="button button--secondary" type="button" aria-expanded="false" aria-controls="password-account-panel" data-copy="admin.password.toggleLabel" hidden>修改密碼</button>
             <button id="refresh-button" class="button button--secondary" type="button" data-copy="admin.dashboard.refreshLabel">重新整理</button>
             <button id="clear-auth-button" class="button button--quiet" type="button" data-copy="admin.dashboard.logoutLabel">Logout</button>
           </div>
         </div>
 
+        <section id="password-account-panel" class="panel account-panel" aria-labelledby="password-account-title" hidden>
+          <div class="account-panel__heading">
+            <div>
+              <p class="step-label" data-copy="admin.password.kicker">ACCOUNT SECURITY</p>
+              <h2 id="password-account-title" data-copy="admin.password.title">修改密碼</h2>
+            </div>
+            <button id="password-form-cancel" class="button button--quiet" type="button" data-copy="admin.password.cancelLabel">收起</button>
+          </div>
+          <form id="password-change-form" class="password-change-form" novalidate>
+            <div class="auth-field">
+              <label for="current-password" data-copy="admin.password.currentLabel">目前密碼</label>
+              <input id="current-password" name="currentPassword" type="password" autocomplete="current-password" maxlength="1024" required>
+            </div>
+            <div class="auth-field">
+              <label for="new-password" data-copy="admin.password.newLabel">新密碼</label>
+              <input id="new-password" name="newPassword" type="password" autocomplete="new-password" maxlength="1024" aria-describedby="password-hint password-form-status" required>
+            </div>
+            <div class="auth-field">
+              <label for="confirm-password" data-copy="admin.password.confirmLabel">確認新密碼</label>
+              <input id="confirm-password" name="confirmPassword" type="password" autocomplete="new-password" maxlength="1024" aria-describedby="password-form-status" required>
+            </div>
+            <p id="password-hint" class="field__hint" data-copy="admin.password.hint">請使用 8–128 個字元，且不可只有空白。</p>
+            <div class="password-change-form__actions">
+              <button id="password-change-submit" class="button button--primary" type="submit" data-copy="admin.password.submitLabel">儲存新密碼</button>
+            </div>
+          </form>
+          <p id="password-form-status" class="account-panel__status" role="status" aria-live="polite" tabindex="-1"></p>
+        </section>
+
+        <div class="queue-tabs" role="tablist" aria-label="投稿狀態" data-copy="admin.dashboard.tabs.ariaLabel" data-copy-attribute="aria-label">
+          <button id="tab-pending" class="queue-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="queue-panel" data-status="pending">
+            <span data-copy="admin.dashboard.tabs.pending">待審核</span>
+            <span id="pending-count" class="queue-tab__count">0</span>
+          </button>
+          <button id="tab-approved" class="queue-tab" type="button" role="tab" aria-selected="false" aria-controls="queue-panel" data-status="approved">
+            <span data-copy="admin.dashboard.tabs.approved">已核准</span>
+            <span id="approved-count" class="queue-tab__count">0</span>
+          </button>
+          <button id="tab-rejected" class="queue-tab" type="button" role="tab" aria-selected="false" aria-controls="queue-panel" data-status="rejected">
+            <span data-copy="admin.dashboard.tabs.rejected">已拒絕</span>
+            <span id="rejected-count" class="queue-tab__count">0</span>
+          </button>
+        </div>
+
         <div id="queue-status" class="sr-only" role="status" aria-live="polite"></div>
+        <div id="queue-panel" role="tabpanel" aria-labelledby="tab-pending">
+          <section id="loading-state" class="queue-state" aria-busy="true">
+            <p class="queue-state__label" data-copy="admin.dashboard.loadingLabel">正在載入⋯</p>
+            <div class="skeleton-card"></div>
+            <div class="skeleton-card"></div>
+            <div class="skeleton-card"></div>
+          </section>
 
-        <section id="loading-state" class="queue-state" aria-busy="true">
-          <p class="queue-state__label" data-copy="admin.dashboard.loadingLabel">正在載入⋯</p>
-          <div class="skeleton-card"></div>
-          <div class="skeleton-card"></div>
-          <div class="skeleton-card"></div>
-        </section>
+          <section id="error-state" class="panel queue-state" hidden>
+            <p class="step-label" data-copy="admin.dashboard.errorEyebrow">CONNECTION ERROR</p>
+            <h2 data-copy="admin.dashboard.errorTitle">無法載入投稿</h2>
+            <p id="error-state-message" data-copy="admin.dashboard.errorBody">請確認後端服務是否正常。</p>
+            <button id="retry-button" class="button button--secondary" type="button" data-copy="admin.dashboard.retryLabel">重新載入</button>
+          </section>
 
-        <section id="error-state" class="panel queue-state" hidden>
-          <p class="step-label" data-copy="admin.dashboard.errorEyebrow">CONNECTION ERROR</p>
-          <h2 data-copy="admin.dashboard.errorTitle">無法載入投稿</h2>
-          <p id="error-state-message" data-copy="admin.dashboard.errorBody">請確認後端服務是否正常。</p>
-          <button id="retry-button" class="button button--secondary" type="button" data-copy="admin.dashboard.retryLabel">重新載入</button>
-        </section>
+          <section id="empty-state" class="panel queue-state" hidden>
+            <p id="empty-state-eyebrow" class="step-label">ALL CLEAR</p>
+            <h2 id="empty-state-title">目前沒有待審核投稿</h2>
+            <p id="empty-state-body">新的投稿會顯示在這裡。</p>
+            <button id="empty-refresh-button" class="button button--secondary" type="button" data-copy="admin.dashboard.emptyRefreshLabel">重新整理</button>
+          </section>
 
-        <section id="empty-state" class="panel queue-state" hidden>
-          <p class="step-label" data-copy="admin.dashboard.emptyEyebrow">ALL CLEAR</p>
-          <h2 data-copy="admin.dashboard.emptyTitle">目前沒有待審核投稿</h2>
-          <p data-copy="admin.dashboard.emptyBody">新的投稿會顯示在這裡。</p>
-          <button id="empty-refresh-button" class="button button--secondary" type="button" data-copy="admin.dashboard.emptyRefreshLabel">重新整理</button>
-        </section>
-
-        <section id="submissions-list" class="submission-list" aria-label="待審核投稿清單" data-copy="admin.dashboard.listAriaLabel" data-copy-attribute="aria-label"></section>
+          <section id="submissions-list" class="submission-list" aria-label="待審核投稿清單"></section>
+        </div>
       </section>
     </main>
+
+    <footer class="site-footer container">
+      <span data-copy="site.footerTagline">DAAN ANONYMOUS / SPEAK FREELY</span>
+      <span data-copy="site.footerCopyright">© 2026 大安匿名</span>
+    </footer>
   </body>
 </html>

@@ -132,6 +132,9 @@ test("production Worker serves same-origin admin assets on workers.dev", async (
   assert.match(workerConfig, /"directory": "\.\/frontend"/);
   assert.match(workerConfig, /"binding": "ASSETS"/);
   assert.match(workerConfig, /"run_worker_first": true/);
+  assert.match(workerConfig, /"ADMIN_AUTH_PROVIDERS": "github,local"/);
+  assert.match(workerConfig, /"LOCAL_AUTH_ENABLED": "false"/);
+  assert.match(workerConfig, /"LOGIN_RATE_LIMIT_MAX_ATTEMPTS": "5"/);
   assert.match(workerConfig, /"PUBLIC_SITE_URL": "https:\/\/flashingtw\.github\.io\/anonymous-ig\/"/);
   assert.match(workerConfig, /"ALLOWED_ORIGINS": "https:\/\/flashingtw\.github\.io"/);
 });

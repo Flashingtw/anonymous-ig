@@ -3,45 +3,49 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="不需登入的匿名投稿頁，投稿將先由管理員審核。" data-copy="publicPage.metaDescription" data-copy-attribute="content">
-    <meta name="theme-color" content="#f4f1ea">
+    <meta name="description" content="大安匿名是免登入的校園匿名投稿平台，投稿將經管理員審核後發布。" data-copy="publicPage.metaDescription" data-copy-attribute="content">
+    <meta name="theme-color" content="#171512">
     <meta property="og:type" content="website">
-    <meta property="og:title" content="匿名投稿" data-copy="social.title" data-copy-attribute="content">
-    <meta property="og:description" content="留下想說的話" data-copy="social.description" data-copy-attribute="content">
+    <meta property="og:title" content="大安匿名｜DAAN ANONYMOUS" data-copy="social.title" data-copy-attribute="content">
+    <meta property="og:description" content="想說什麼，都可以留在這裡。" data-copy="social.description" data-copy-attribute="content">
     <meta property="og:image" content="http://127.0.0.1:8787/og.png" data-copy="social.image" data-copy-attribute="content">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="匿名投稿" data-copy="social.title" data-copy-attribute="content">
-    <meta name="twitter:description" content="留下想說的話" data-copy="social.description" data-copy-attribute="content">
+    <meta name="twitter:title" content="大安匿名｜DAAN ANONYMOUS" data-copy="social.title" data-copy-attribute="content">
+    <meta name="twitter:description" content="想說什麼，都可以留在這裡。" data-copy="social.description" data-copy-attribute="content">
     <meta name="twitter:image" content="http://127.0.0.1:8787/og.png" data-copy="social.image" data-copy-attribute="content">
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'self'"
     >
-    <title data-copy="publicPage.pageTitle">匿名投稿</title>
+    <title data-copy="publicPage.pageTitle">大安匿名｜DAAN ANONYMOUS</title>
     <link rel="stylesheet" href="./assets/styles.css">
     <script src="./config.js"></script>
     <script src="./assets/app.js" type="module"></script>
   </head>
   <body class="submission-page">
     <header class="site-header container container--narrow">
-      <a class="brand" href="./" aria-label="匿名投稿首頁" data-copy="publicPage.homeAriaLabel" data-copy-attribute="aria-label">
-        <span class="brand__mark" aria-hidden="true" data-copy="site.brandMark">匿</span>
-        <span data-copy="site.brandName">匿名投稿</span>
+      <a class="brand" href="./" aria-label="大安匿名首頁" data-copy="publicPage.homeAriaLabel" data-copy-attribute="aria-label">
+        <span class="brand__mark" aria-hidden="true" data-copy="site.brandMark">大</span>
+        <span class="brand__wordmark">
+          <strong data-copy="site.brandName">大安匿名</strong>
+          <small data-copy="site.brandEnglish">DAAN ANONYMOUS</small>
+        </span>
       </a>
-      <span class="eyebrow" data-copy="publicPage.eyebrow">OPEN INBOX</span>
+      <span class="eyebrow" data-copy="publicPage.eyebrow">OPEN INBOX / 106</span>
     </header>
 
     <main class="container container--narrow">
       <section class="intro" aria-labelledby="page-title">
-        <p class="kicker" data-copy="publicPage.kicker">匿名・免登入</p>
-        <h1 id="page-title" data-copy="publicPage.title">留下想說的話</h1>
-        <p class="intro__copy" data-copy="publicPage.description">送出後會先審核。</p>
+        <p class="kicker" data-copy="publicPage.kicker">DAAN ANONYMOUS</p>
+        <h1 id="page-title" data-copy="publicPage.title">大安匿名</h1>
+        <p class="intro__english" data-copy="publicPage.englishTitle">DAAN ANONYMOUS</p>
+        <p class="intro__copy" data-copy="publicPage.description">想說什麼，都可以留在這裡。</p>
       </section>
 
       <section class="panel submission-panel" aria-labelledby="form-title">
         <div class="panel__heading">
           <div>
-            <p class="step-label" data-copy="publicPage.form.stepLabel">01 / WRITE</p>
+            <p class="step-label" data-copy="publicPage.form.stepLabel">WRITE IT DOWN</p>
             <h2 id="form-title" data-copy="publicPage.form.title">匿名投稿</h2>
           </div>
           <span class="privacy-badge" data-copy="publicPage.form.privacyBadge">匿名</span>
@@ -70,7 +74,7 @@
           <div id="captcha-slot" class="captcha-slot" hidden></div>
 
           <button id="submit-button" class="button button--primary button--wide" type="submit">
-            <span data-copy="publicPage.form.submitLabel">送出投稿</span>
+              <span data-copy="publicPage.form.submitLabel">匿名送出</span>
             <span aria-hidden="true">↗</span>
           </button>
         </form>
@@ -78,12 +82,12 @@
         <div id="submission-status" class="notice" role="status" aria-live="polite" hidden></div>
       </section>
 
-      <p class="consent-note" data-copy="publicPage.form.consent">內容可能經整理後公開刊登。</p>
+      <p class="consent-note" data-copy="publicPage.form.consent">投稿將經管理員審核後發布。</p>
     </main>
 
     <footer class="site-footer container container--narrow">
-      <span data-copy="site.footerTagline">PRIVATE BY DEFAULT</span>
-      <span data-copy="site.footerCopyright">© 2026 ANONYMOUS INBOX</span>
+      <span data-copy="site.footerTagline">DAAN ANONYMOUS / SPEAK FREELY</span>
+      <span data-copy="site.footerCopyright">© 2026 大安匿名</span>
     </footer>
   </body>
 </html>

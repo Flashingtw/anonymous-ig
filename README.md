@@ -1,6 +1,37 @@
-# 匿名投稿 MVP
+# 大安匿名 / DAAN ANONYMOUS
 
-純 HTML/CSS/JavaScript frontend、Cloudflare Worker API、Cloudflare D1 與 GitHub OAuth 管理後台。目前 GitHub repository、production D1、migrations 與第一位 owner 已建立；Worker、Pages 與 OAuth App 仍依本文件後續步驟完成。本專案未連接 Instagram。
+「大安匿名」是免登入的匿名投稿平台，使用純 HTML/CSS/JavaScript frontend、Cloudflare Worker API、Cloudflare D1，以及共用同一套安全 session 的 GitHub OAuth／本機帳密管理員登入。既有公開站、Worker、D1 與 GitHub OAuth 已部署；本分支的黑橘品牌改版、圖片 renderer 與 Local Account Login 都仍只在本機開發，尚未套用至 production。本專案未連接 Instagram。
+
+## 文件與目前狀態
+
+本 README 是操作與規則入口；[登入實作報告](docs/local-auth-implementation.md) 記錄安全設計與驗證，[部署狀態快照](docs/deployment-status.md) 記錄有日期的線上查詢結果。歷史驗證成功不等於功能已部署，也不等於正式帳號已建立。
+
+- 本機新版：GitHub OAuth 保留，新增一般帳號密碼登入；正式站目前仍是舊版 GitHub 登入。
+- 帳號：3–32 個英數字或 `_`、`-`、`.`，登入不分大小寫。密碼：8–128 個使用者可見字元，不限數字、不可全空白，另有 1024 UTF-8 bytes 上限。
+- 建立管理員只使用受信任 CLI；沒有公開註冊。新增帳號預設 `moderator`；`owner`、`admin` 必須明確指定，不會因使用帳密登入而自動升權。
+- `local` 在登入名稱中指「帳密身分」，不表示只能在本機使用。CLI 的 `--local`／`--remote` 才是資料庫目標；本機帳號不會自動同步到正式 D1。
+- 本次只統一規則與文件，不代表授權部署、套用正式 migration 或建立正式帳號。
+
+## 登入入口與資料庫目標
+
+| 環境 | 入口 | 帳號／資料庫 |
+| --- | --- | --- |
+| 一般本機開發 | `http://127.0.0.1:8787/admin/`，用 `npm run dev` 啟動 | Wrangler 預設 `.wrangler/state/`；使用標準 CLI `--local` |
+| 這次的隔離測試 | `http://127.0.0.1:8788/admin/`，需測試服務仍在執行 | `tmp/local-auth-ui-state/`；使用下方測試 helper |
+| 正式公開投稿 | [GitHub Pages](https://flashingtw.github.io/anonymous-ig/) | 不承載管理 session；`admin/` 只轉址 |
+| 正式管理後台 | [Cloudflare Worker /admin/](https://anonymous-submissions-api-production.flashingtw.workers.dev/admin/) | production D1；經明確授權才使用標準 CLI `--remote` |
+
+8787 與 8788 是兩套不同的本機資料，不能混用建立帳號指令。`tmp/` 被 Git 忽略，測試 helper 不會隨 clone、Pages 或 Worker 部署交付；新的工作目錄請使用下方一般本機開發流程。
+
+目前工作目錄的 8788 隔離測試，PowerShell 執行：
+
+```powershell
+cd E:\anonymous
+node tmp/manage-test-admin.mjs add-local --username friend01 --role moderator --execute
+node tmp/manage-test-admin.mjs list
+```
+
+把 `friend01` 換成想建立的帳號；helper 固定本機目標與隔離資料夾，不要另外加 `--local` 或 `--remote`。依序在 `Password:`、`Confirm password:` 輸入相同密碼（不顯示字元），看到 `Admin change completed and audited.` 才算建立成功。若出現 `Password must contain at least 8 characters.`，請重新執行指令並輸入符合規則的密碼；不要把密碼貼進對話或命令列。已存在帳號要重設密碼，將 `add-local` 改成 `set-password` 並移除 `--role moderator`。
 
 ## 架構
 
@@ -18,13 +49,16 @@ https://anonymous-submissions-api-production.flashingtw.workers.dev/      Cloudf
 - Pages 的 `/anonymous-ig/admin/` 只是一個不含管理程式碼的 handoff 頁，立即導向 Worker `/admin/`。
 - Session cookie 是 `anonymous-submissions-api-production.flashingtw.workers.dev` 的 host-only cookie，不設定 `Domain`，GitHub Pages 不需要、也不應讀取管理 session。
 
-主要功能：
+目前工作區的功能範圍（不代表全部已上線）：
 
 - 匿名投稿，免登入，trim 後 1–1000 個 Unicode code points。
 - GitHub OAuth 管理員登入，使用 GitHub numeric user id 白名單。
+- 可選的 Local Account Login；不提供公開註冊，帳號只能由受信任的 CLI 建立。
 - OAuth state、PKCE、D1 opaque session、CSRF token。
 - `owner`、`admin`、`moderator` 管理角色與 disabled 檢查。
 - Pending 投稿查看、approve、reject 與 audit log。
+- Pending、approved、rejected 分頁與 approved-only 圖片預覽流程。
+- `classic-canva` renderer 只在既有 Canva PNG 上疊加投稿編號與內文，不重畫模板。
 - Production 精確 CORS、安全 cookie、安全標頭、錯誤遮蔽與 D1 health check。
 - GitHub Actions 只發布 `frontend/` 產生的 Pages artifact。
 - Instagram publishing 邊界保留，但沒有 Meta App、token 或自動發文。
@@ -41,22 +75,28 @@ pending ──approve──> approved ──未來 publisher──> posted
 ```text
 .github/workflows/deploy-pages.yml  main push 的 GitHub Pages workflow
 frontend/                           GitHub Pages 相容的純 HTML/CSS/JS
-  admin/                            GitHub 登入與投稿審核 UI
+  admin/                            GitHub／帳密登入與投稿審核 UI
   config.js                         本機公開設定；production 產物會重新生成
   content.json                      可自行修改的網站文字
 worker/src/
   handlers/                         auth、health、submissions use cases
   repositories/                     D1 admins、sessions、audit、submissions
-  security/                         cookie、crypto、rate limit、CAPTCHA 邊界
+  rendering/                        classic-canva 排版、字型與 SVG/WASM renderer
+  security/                         cookie、crypto、password KDF、login limiter 與 CAPTCHA 邊界
+  storage/                          local memory / future R2 image storage adapters
   services/publishing.js            未來 Instagram publishing 邊界
   auth.js                           共用 admin auth / authorization / CSRF
 migrations/
   0001_create_submissions.sql
   0002_create_admin_auth.sql
+  0003_add_submission_rendering.sql
+  0004_add_local_admin_auth.sql
 scripts/
   build-pages.js                    產生 frontend-only production artifact
   bootstrap-owner.js                私有 CLI owner bootstrap
+  manage-admin.js                   私有 local admin 管理 CLI
   smoke-production.js               production 唯讀 smoke test
+  render-fixtures.mjs               產生 deterministic classic visual fixtures
 wrangler.dev.jsonc                  本機 Worker + static frontend
 wrangler.jsonc                      production Worker 設定與 named environment
 test/                               不呼叫真實 GitHub API 的自動測試
@@ -80,15 +120,22 @@ cp .dev.vars.example .dev.vars
 ```dotenv
 APP_ENV="development"
 ADMIN_AUTH_PROVIDER="github"
+ADMIN_AUTH_PROVIDERS="github,local"
+LOCAL_AUTH_ENABLED="true"
 GITHUB_CLIENT_ID="你的本機 OAuth App client id"
 GITHUB_CLIENT_SECRET="你的本機 OAuth App client secret"
 GITHUB_REDIRECT_URI="http://127.0.0.1:8787/api/auth/github/callback"
 FRONTEND_URL="http://127.0.0.1:8787/"
 SESSION_SECRET="至少 32 字元的本機隨機值"
 SESSION_TTL_SECONDS="28800"
+LOGIN_RATE_LIMIT_MAX_ATTEMPTS="5"
+LOGIN_RATE_LIMIT_WINDOW_SECONDS="900"
+LOGIN_RATE_LIMIT_BLOCK_SECONDS="900"
 DEV_ADMIN_MODE="false"
 ALLOWED_ORIGINS="http://127.0.0.1:8787,http://localhost:8787,http://localhost:8000"
 ```
+
+`ADMIN_AUTH_PROVIDER` 是舊版相容設定；非空的 `ADMIN_AUTH_PROVIDERS` 優先。`LOCAL_AUTH_ENABLED` 是帳密登入的決定性開關：精確為 `true` 時加入 local provider，其他值會移除 local provider，即使清單包含 `local` 也不啟用。一般環境保留 `github`，不要為新增帳密登入移除 OAuth；DEV 模式只供本機隔離測試。
 
 產生本機 session secret：
 
@@ -98,7 +145,7 @@ openssl rand -base64 48
 
 `.dev.vars` 與 `.env` 二選一；兩者都已忽略。`.dev.vars.example`、`.env.example` 只有假值，必須保留在版本庫。
 
-### 2. 建立本機 GitHub OAuth App（GitHub 網頁）
+### 2. 建立本機 GitHub OAuth App（GitHub 網頁，可選）
 
 GitHub **Settings → Developer settings → OAuth Apps → New OAuth App**：
 
@@ -107,11 +154,21 @@ GitHub **Settings → Developer settings → OAuth Apps → New OAuth App**：
 
 Callback 必須與 `GITHUB_REDIRECT_URI` 完全一致。不要啟用 wildcard callback、Device Flow，也不需要 `repo`、email 或 organization scope。建議 local 與 production 分別使用不同 OAuth App 與 secret。
 
-### 3. 建立本機 D1 schema 與 owner
+若這次只測 Local Account Login，可以暫時不建立本機 OAuth App；GitHub 登入按鈕會保留，但 GitHub provider 設定不完整時無法完成登入。
+
+### 3. 建立本機 D1 schema 與帳號
 
 ```bash
 npm run db:migrate:local
 ```
+
+只測帳密登入時，直接建立預設的 moderator，不必先建立 GitHub owner：
+
+```powershell
+npm run admin:add-local -- --username friend01 --role moderator --local --execute
+```
+
+這個帳號在標準 8787 開發資料庫，不在 8788 隔離測試庫。若需要本機 owner，可明確指定 `--role owner`。以下 GitHub owner bootstrap 是另一種選項，僅在需要且尚未建立時使用。
 
 查詢自己的 numeric GitHub user id；回應中的 `id` 是授權依據，`login` 只作顯示：
 
@@ -156,6 +213,8 @@ npm run dev
 ```dotenv
 APP_ENV="development"
 ADMIN_AUTH_PROVIDER="dev"
+ADMIN_AUTH_PROVIDERS="dev"
+LOCAL_AUTH_ENABLED="false"
 DEV_ADMIN_MODE="true"
 DEV_ADMIN_TOKEN="至少 24 字元的本機隨機值"
 ```
@@ -164,7 +223,92 @@ DEV_ADMIN_TOKEN="至少 24 字元的本機隨機值"
 
 > DEV mode 絕對不可用於 production。提交前請把 `frontend/config.js` 保持為 `github`。
 
+## Local Account Login 安全設計
+
+Local login 是 GitHub OAuth 的並存選項，不是另一套權限系統：兩種登入都解析到同一筆 `admins.id`，共用 `admin_sessions`、HttpOnly cookie、role、enabled 檢查、CSRF、audit log 與 `/api/admin/*` middleware。同一筆 admin 可以只有 GitHub、只有 local，或同時有兩種 identity；網站不提供 `/register`、Create account、forgot password 或公開新增管理員 API。
+
+### Username 與 password
+
+- Username 顯示值保留原始大小寫；登入與唯一性使用 trim 後的 ASCII lowercase `username_normalized`。只允許 `A–Z`、`a–z`、`0–9`、`_`、`-`、`.`，長度 3–32，因此 `Flash`、`flash`、`FLASH` 是同一帳號。
+- `admins.id` 才是不可變的內部 identity；username 可在未來安全改名，不作 foreign key。
+- 密碼長度以 Unicode grapheme cluster 計算，允許 passphrase，需 8–128 graphemes、不可只有空白，且另設 1024 UTF-8 bytes 上限；密碼不做 silent truncation，也不強迫大小寫或特殊符號組合。
+- Hash 使用 Workers Web Crypto 的 PBKDF2-HMAC-SHA-256、每筆獨立 16-byte random salt、600,000 iterations、32-byte derived key。儲存格式為 `pbkdf2_sha256$600000$BASE64URL_SALT$BASE64URL_HASH`，方便未來辨識版本與升級 KDF。
+- 沒有找到 username 時仍會驗證一個固定、公開且格式正確的 dummy hash，避免最明顯的「不存在帳號立即回應」timing enumeration。這只能縮小差異，不宣稱能完全消除所有 side channel。
+
+目前 Cloudflare Workers 的 Web Crypto 原生支援 PBKDF2，而 Workers 的 Node crypto 相容層沒有 Argon2 API；因此本版不加入 native bcrypt／scrypt addon 或不明 WASM。PBKDF2 參數採 OWASP 現行 PBKDF2-HMAC-SHA-256 建議值。參考：[Cloudflare Web Crypto](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/)、[Cloudflare Node crypto compatibility](https://developers.cloudflare.com/workers/runtime-apis/nodejs/crypto/)、[OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)。
+
+### 登入防護
+
+- 錯誤 username、錯誤 password 與 disabled admin 對 client 一律回 `401 INVALID_CREDENTIALS`，不指出是哪個欄位錯誤；response 不包含 password hash、session token 或內部 identity。
+- 依「client IP」與「normalized username」兩個維度分別限制：15 分鐘內最多 5 次密碼驗證，第 5 次仍可驗證，後續嘗試封鎖 15 分鐘並回 `429 TOO_MANY_ATTEMPTS`。驗證前即以原子操作保留名額，包含同時進行中的請求，防止併發繞過。數值可用 `LOGIN_RATE_LIMIT_MAX_ATTEMPTS`、`LOGIN_RATE_LIMIT_WINDOW_SECONDS`、`LOGIN_RATE_LIMIT_BLOCK_SECONDS` 調整。
+- Development/test 使用 process-memory adapter；production 使用 D1 bounded state。IP 與 username 會先以 `SESSION_SECRET` 做 HMAC，D1 不存明文；過期 rate-limit rows 會定期刪除，不逐次永久累積。
+- 成功登入只清除該 username 的暫時計數；IP 計數保留並自然到期，避免攻擊者用有效帳號反覆登入來重置對其他人的攻擊預算。共用 NAT 的管理員可能共用此限制。登入產生全新 opaque session token，D1 只存 SHA-256 token hash；若瀏覽器原有 session cookie，建立新 session 時會一併撤銷，避免 session fixation。建立 session 的 SQL 會再次確認 enabled 與驗證過的 password hash，阻止密碼重設期間的舊密碼登入競態。
+- Local login 本身沒有既有 CSRF token，所以 production 只接受 Worker 管理頁的同源 `Origin`，並拒絕 cross-site Fetch Metadata。攻擊者頁面無法強迫瀏覽器登入攻擊者帳號。這也表示 production Local login 必須從 Worker 同源 `/admin/` 使用，不從 GitHub Pages 直接送出。
+- `local_login_failed` audit 只保存 generic failure metadata；不保存 plaintext password、完整 IP、username、cookie 或 hash。一般 API production log 也不記 request body、query、headers 或 stack。
+
+### Password change 與 owner safety
+
+有 local identity 的已登入管理員可在後台使用「修改密碼」。`POST /api/admin/account/password` 需要現有 admin session 與 session-bound CSRF，會驗證 current password、confirmation 與新密碼 policy。成功時在同一個 D1 batch 中更新 hash、刪除該 admin 的所有 sessions、建立一個只給目前瀏覽器的新 session，並寫入 `password_changed` audit；前端會立即接收旋轉後的新 CSRF token。
+
+`0004_add_local_admin_auth.sql` 另建立 database triggers，禁止 disable、delete 或 demote 最後一位 enabled owner。這是 D1 最終防線，不依賴 CLI 或未來 UI 的按鈕狀態。
+
+密碼更新的 SQL 同時檢查原 session 仍存在且未過期、admin 仍 enabled、原 password hash 未改變。CLI disable 會撤銷既有 sessions，因此重新 enable 不會復活舊 cookie。
+
+### 用 CLI 建立與管理帳號
+
+先套用本機 migration：
+
+```bash
+npm run db:migrate:local
+```
+
+替朋友建立 `moderator` 時先預覽；預覽不詢問密碼，也不讀寫 D1：
+
+```bash
+npm run admin:add-local -- --username friend01 --role moderator --local
+```
+
+確認 target、username、role 都正確後才加 `--execute`。只有這時 CLI 才會在 TTY 中隱藏輸入兩次密碼；不接受 `--password`，密碼與 encoded hash 都不會出現在 argv、shell history 或一般 console output：
+
+```bash
+npm run admin:add-local -- --username friend01 --role moderator --local --execute
+```
+
+其他管理指令：
+
+```bash
+npm run admin:list -- --local
+
+npm run admin:set-role -- --username friend01 --role admin --local --execute
+
+npm run admin:disable -- --username friend01 --local --execute
+
+npm run admin:enable -- --username friend01 --local --execute
+
+npm run admin:set-password -- --username friend01 --local --execute
+```
+
+所有 mutation 預設都是 dry-run，必須明確加 `--execute`；`list` 只顯示 id、local username、GitHub display username、role、enabled、auth methods 與建立時間，不查詢或顯示 password hash。設定／重設密碼也會撤銷該帳號全部既有 sessions。
+
+CLI 在 Windows 直接以 Node 啟動已安裝的 Wrangler，避免 `.cmd` shell 相容性與字串插值問題。含 hash 的 SQL 與 Wrangler 日誌放在同一個私人暫存目錄，完成或失敗後一起刪除；Unix 使用 `0700/0600`，Windows 使用僅目前帳號與 SYSTEM 可存取的 ACL，無法套用 ACL 時停止。不要在不支援 ACL 的 Windows 暫存磁碟執行密碼管理；主機管理員仍屬受信任邊界。
+
+API 錯誤保留既有 `{ ok: false, error: { code, message } }` 格式。無效帳密一律使用 `INVALID_CREDENTIALS`，限流使用 `TOO_MANY_ATTEMPTS`，不增加第二套前端錯誤格式。
+
+### 本機驗證與 production 前確認
+
+`npm test` 現在包含 workerd / Miniflare 實際 runtime 驗證，涵蓋帶有既有資料的 `0001`–`0003` 升級、PBKDF2 600,000 次登入、Worker 產生的 hash 與 Node CLI 互通、session rotation、D1 限流併發與 CLI SQL。測試使用獨立暫存資料庫；GitHub 網路呼叫仍為 mock。Windows ACL 測試必須在可設定測試目錄 ACL 的正常使用者環境執行。
+
+2026-09-07 已在獨立本機目錄 `tmp/local-auth-ui-state/` 透過 Wrangler 成功套用 `0001`–`0004`，並檢查 390px 登入頁與 Enter 錯誤提示。此結果不代表 production migrations 已套用。AppleDouble `._*` 保留在磁碟，但來源檢查、Pages/Worker assets 和 migration 探索都已排除它們；`.git` 內既有 metadata 的修復不屬本次登入實作。
+
+Production 仍維持 `LOCAL_AUTH_ENABLED=false`。發布前先備份並核對實際 migration 狀態：若 production 已有 `0003`，只套用 `0004`；先完成 schema，再更新程式，驗證 GitHub OAuth，建立 local admin，最後才啟用 local login。帳密登入沿用 `DB`，不需要新的付費 Rate Limiting / Durable Object / R2 binding。Render 的 R2 是獨立需求。
+
+另外需確認 Worker 的 CPU 預算：本機 workerd 成功不等於 production plan 足夠。PBKDF2 與改密碼需要密集計算；上線前應依實際方案與當時的 [Workers limits](https://developers.cloudflare.com/workers/platform/limits/) 驗證 CPU 指標，不應為了遷就方案降低 KDF 強度。完整交付說明見 [Local Account Login 實作報告](docs/local-auth-implementation.md)。
+
+未來部署經人工確認後，可把上例的 `--local` 換成 `--remote`；remote 固定使用 production D1 binding 與 `--env production`。**本階段不要執行 remote mutation。** `add-local` 只建立全新的 local-only row；若某人已經是 GitHub admin，不要再替同一人執行 `add-local`。Schema 已支援在同一筆 `admins.id` 同時保留 GitHub 與 local identity，但 account linking 流程不在本階段範圍。
+
 ## API
+
+以下是本機新版契約，不是正式站即時 API 清單；正式可用狀態見 [部署狀態快照](docs/deployment-status.md)。
 
 ### Public
 
@@ -173,6 +317,8 @@ DEV_ADMIN_TOKEN="至少 24 字元的本機隨機值"
 
 ### Authentication
 
+- `GET /api/auth/providers`
+- `POST /api/auth/login`
 - `GET /api/auth/github`
 - `GET /api/auth/github/callback`
 - `GET /api/auth/me`
@@ -180,11 +326,44 @@ DEV_ADMIN_TOKEN="至少 24 字元的本機隨機值"
 
 ### Admin
 
-- `GET /api/admin/submissions?limit=50`
+- `GET /api/admin/submissions?status=pending|approved|rejected&limit=50`
 - `POST /api/admin/submissions/:id/approve`
 - `POST /api/admin/submissions/:id/reject`
+- `POST /api/admin/submissions/:id/render`
+- `GET /api/admin/submissions/:id/preview`
+- `POST /api/admin/account/password`
 
-所有 `/api/admin/*` 都先驗證 session、admin existence、`enabled=1` 與 role。Approve、reject、logout 另驗證 `X-CSRF-Token`。
+所有 `/api/admin/*` 都先驗證 session、admin existence、`enabled=1` 與 role。Approve、reject、render、password change、logout 另驗證 `X-CSRF-Token`。只有 `approved` 投稿可以 render；preview 圖片 key 永不回傳 frontend。
+
+## Classic Canva 圖片 renderer（本機開發中）
+
+正式模板是 `assets/DAAN-anonymous.png`（1080 × 1350）。程式不重畫背景、紙張、膠帶或材質，只加入 `#XXX` 與投稿內容。所有初始 calibration 位於 `worker/src/rendering/templates/classic-canva.js`。
+
+Renderer 使用：
+
+- `opentype.js` 解析實際字型、量測 advance/outline bounding box，並把文字轉成 SVG path。
+- `@resvg/resvg-wasm` 在 Cloudflare Workers 相容的 WASM runtime 中，把原始 PNG 與 SVG paths 合成 PNG。
+- 同一組 glyph outline 同時用於量測與繪製，因此編號可依可見 bounding box 精準置中，不使用 synthetic bold。
+- `Intl.Segmenter` 以 Unicode grapheme cluster 計數；換行依實際 rendered width，不使用固定字數切行。
+
+正式字型不允許 fallback。需要合法檔案：
+
+```text
+assets/fonts/Anton-Regular.ttf
+assets/fonts/KeHuaJinXiuTi-Traditional.ttf
+```
+
+如果檔案不存在，正式 renderer 會以 `RENDER_FONT_ASSET_MISSING` 明確停止。若正式中文字型缺少某個 emoji glyph，也會拒絕而不是顯示 tofu 或偷偷換字型。
+
+Deterministic fixtures 指令：
+
+```bash
+npm run render:fixtures
+```
+
+成功時輸出到 gitignored 的 `tmp/render-fixtures/`。目前缺正式字型時，這個指令預期會停止並列出缺少的合法字型路徑。
+
+圖片 binary 不寫入 D1。`imageStorage.put/get/delete` 的 local memory adapter 只供本機與測試；R2 adapter 已預留，但 production 未建立或綁定 R2，因此 production 會 fail closed，不能使用 isolate memory 假裝永久儲存。
 
 ## Production 安全行為
 
@@ -278,7 +457,7 @@ https://flashingtw.github.io/anonymous-ig/
 
 `wrangler.jsonc` 的 `env.production` 是正式 source of truth。部署、remote migrations、secrets 與 D1 execute 都必須帶 `--env production`；不要混用頂層 binding。
 
-先替換：
+目前設定已指向既有 production 資源。更新時只核對，不要重新建立 D1 或隨意替換 OAuth／session 設定：
 
 - `GITHUB_CLIENT_ID`
 - `GITHUB_REDIRECT_URI`（實際 Worker callback URL）
@@ -286,7 +465,7 @@ https://flashingtw.github.io/anonymous-ig/
 - `PUBLIC_SITE_URL`
 - `ALLOWED_ORIGINS`
 - D1 `database_name`
-- D1 `database_id`（必須是本次建立的 production D1）
+- D1 `database_id`（必須是既有 production D1；新環境才使用新建的 id）
 
 Production variables：
 
@@ -294,6 +473,8 @@ Production variables：
 | --- | --- |
 | `APP_ENV` | `production` |
 | `ADMIN_AUTH_PROVIDER` | `github` |
+| `ADMIN_AUTH_PROVIDERS` | `github,local` |
+| `LOCAL_AUTH_ENABLED` | 先保持 `false`；套用 `0004` 並建立 local admin 後才改為 `true` |
 | `DEV_ADMIN_MODE` | `false` |
 | `GITHUB_CLIENT_ID` | production OAuth App Client ID |
 | `GITHUB_REDIRECT_URI` | `https://anonymous-submissions-api-production.flashingtw.workers.dev/api/auth/github/callback` |
@@ -301,6 +482,9 @@ Production variables：
 | `PUBLIC_SITE_URL` | `https://flashingtw.github.io/anonymous-ig/` |
 | `ALLOWED_ORIGINS` | `https://flashingtw.github.io` |
 | `SESSION_TTL_SECONDS` | `28800` |
+| `LOGIN_RATE_LIMIT_MAX_ATTEMPTS` | `5` |
+| `LOGIN_RATE_LIMIT_WINDOW_SECONDS` | `900` |
+| `LOGIN_RATE_LIMIT_BLOCK_SECONDS` | `900` |
 
 Production secrets 已在 config 中宣告為 required，但沒有值：
 
@@ -326,18 +510,22 @@ Worker `/` 會導回 `PUBLIC_SITE_URL`，`/admin/` 留在 Worker；其他非管�
 
 ## Production D1 migrations
 
-先確認 `wrangler.jsonc` 的 production `database_id` 已替換為剛建立的 D1 id。接著只查看 pending migrations：
+先核對 `wrangler.jsonc` 的 production `database_id` 指向正確的既有 D1。接著只查看 pending migrations：
 
 ```bash
 npm run db:migrations:list:production
 ```
 
-第一次應依序看到：
+全新空資料庫才預期看到全部四個 migration；既有 production 只應顯示尚未套用者，不要根據本機檔案推測遠端狀態：
 
 ```text
 0001_create_submissions.sql
 0002_create_admin_auth.sql
+0003_add_submission_rendering.sql
+0004_add_local_admin_auth.sql
 ```
+
+`0003` 與 `0004` 是目前未發布變更；因 CLI 缺少可用 Cloudflare 憑證，正式 D1 是否已套用尚未查證，不可宣稱遠端缺少或已有它們。先備份、核對 pending 清單並驗證升級相容性，再經明確授權套用。帳密 schema 依賴 `0003`，但不需要先啟用實際產圖；只有包含產圖的 release 才需要另完成字型、renderer、R2 與 visual fixtures。文件中的 remote 指令是操作手冊，不代表執行授權。
 
 確認目標 database 名稱與檔案後再套用：
 
@@ -357,6 +545,8 @@ npx wrangler d1 migrations list DB --remote --env production
 不要對 production 使用 `--local`，也不要在未確認清單時跳過互動確認。D1 會記錄已套用 migration；單一 migration 失敗會 rollback 該 migration，先前成功的 migration 保留。[Wrangler D1 commands](https://developers.cloudflare.com/workers/wrangler/commands/d1/)。
 
 ## Bootstrap production 第一位 owner
+
+僅適用於尚無 owner 的新環境。既有正式站更新時先核對身分，不要重複 bootstrap 或重建管理員。
 
 1. 使用 GitHub public users API 查自己的 `id`；不要從 username 猜測，也不要把 username 當唯一識別。
 2. 先用無 `--execute` 指令預覽 target、numeric id 與角色。
@@ -400,6 +590,18 @@ Script 只做：
 原本的 `npm run test:smoke` 是 **local-only**，會建立並處理三筆測試投稿，不可指向 production。
 
 ## Production Deployment Checklist
+
+### 既有站更新順序（目前適用）
+
+1. 確認 release 範圍、source check、tests 與 dry-run；產圖未完成時不得宣稱此 release 已提供產圖。`npm run build` 不會上線。
+2. 取得 Cloudflare 授權，唯讀核對部署版本、secret 名稱、D1 目標與 pending migrations，備份並準備恢復方式。缺少授權就停止正式操作，不建立替代資源。
+3. 經明確批准後，按依賴順序套用必要 schema，再部署 Worker 程式；初次上新版保持 `LOCAL_AUTH_ENABLED=false`，驗證 health 與 GitHub OAuth。
+4. 經帳號／角色確認後，用標準 CLI 的 `--remote --execute` 與隱藏提示建立正式 local admin；不可把本機 DB、測試 secret 或 `tmp/` 搬上線。
+5. 確認 CPU 預算後，在受控發布步驟將 `LOCAL_AUTH_ENABLED=true` 並部署，才測試正式帳密登入、錯誤限流、改密碼與登出；開關關閉時不能完成帳密登入驗證。異常時關回 `false` 並部署，保留 GitHub OAuth；不要直接回滾或刪除正式 schema。
+6. Worker API 驗證完成後，才將已審查的 release 合併／push 到 `main` 觸發 Pages。GitHub Actions 只部署 Pages，不會部署 Worker、套用 D1 或建立帳號；不得先發布依賴新版 API 的前端。
+7. 核對 Pages workflow、公開頁、Worker `/admin/` 與授權的端到端測試，更新 [部署狀態快照](docs/deployment-status.md)，記錄實際版本、時間與未驗證項目。
+
+下方編號 0–18 保留作「全新環境首次建置」參考，不是目前站點必須重跑的清單；其中 remote writes、推送、部署與測試投稿都需要明確授權。Bash 區塊的 `\` 續行與前置環境變數語法不可直接貼入 PowerShell；Windows 請合併指令為單行並以 `$env:變數名稱` 設定環境變數。
 
 正式公開網址固定為 `https://flashingtw.github.io/anonymous-ig/`；管理/API 網址固定為 `https://anonymous-submissions-api-production.flashingtw.workers.dev/`。凡標記「網頁」的步驟都需要登入對應網站。此架構不需要購買網域、加入 Cloudflare zone、設定 DNS/CNAME 或建立 Custom Domain。
 
@@ -461,12 +663,17 @@ npx wrangler d1 create anonymous-submissions-production
 ```text
 APP_ENV=production
 ADMIN_AUTH_PROVIDER=github
+ADMIN_AUTH_PROVIDERS=github,local
+LOCAL_AUTH_ENABLED=false
 DEV_ADMIN_MODE=false
 GITHUB_REDIRECT_URI=https://anonymous-submissions-api-production.flashingtw.workers.dev/api/auth/github/callback
 FRONTEND_URL=https://anonymous-submissions-api-production.flashingtw.workers.dev/
 PUBLIC_SITE_URL=https://flashingtw.github.io/anonymous-ig/
 ALLOWED_ORIGINS=https://flashingtw.github.io
 SESSION_TTL_SECONDS=28800
+LOGIN_RATE_LIMIT_MAX_ATTEMPTS=5
+LOGIN_RATE_LIMIT_WINDOW_SECONDS=900
+LOGIN_RATE_LIMIT_BLOCK_SECONDS=900
 workers_dev=true
 ```
 
@@ -478,7 +685,7 @@ npm run db:migrate:production
 npm run db:migrations:list:production
 ```
 
-確認只有 `0001`、`0002` 依序套用，最後沒有 pending migration。
+部署 Local Account Login 的 release 才確認必要的 `0001`–`0004` 依序套用，最後沒有 pending migration；未獲授權不執行 remote apply。先完成 schema、部署程式並建立 local admin，再於受控發布中啟用 `LOCAL_AUTH_ENABLED=true`，最後實際驗證帳密登入；詳見上方既有站更新順序。
 
 ### 7. Bootstrap 第一位 owner（本機 CLI，需要 Cloudflare 登入）
 
@@ -518,6 +725,8 @@ GitHub **Settings → Developer settings → OAuth Apps → New OAuth App**：
 ```text
 APP_ENV=production
 ADMIN_AUTH_PROVIDER=github
+ADMIN_AUTH_PROVIDERS=github,local
+LOCAL_AUTH_ENABLED=false
 DEV_ADMIN_MODE=false
 GITHUB_CLIENT_ID=<production client id>
 GITHUB_REDIRECT_URI=https://anonymous-submissions-api-production.flashingtw.workers.dev/api/auth/github/callback
@@ -525,6 +734,9 @@ FRONTEND_URL=https://anonymous-submissions-api-production.flashingtw.workers.dev
 PUBLIC_SITE_URL=https://flashingtw.github.io/anonymous-ig/
 ALLOWED_ORIGINS=https://flashingtw.github.io
 SESSION_TTL_SECONDS=28800
+LOGIN_RATE_LIMIT_MAX_ATTEMPTS=5
+LOGIN_RATE_LIMIT_WINDOW_SECONDS=900
+LOGIN_RATE_LIMIT_BLOCK_SECONDS=900
 ```
 
 不要把 `/anonymous-ig/` path 寫進 `ALLOWED_ORIGINS`，不要加入 localhost，也不要使用 `*`。修改後 commit 並 push；仍不可提交 secret。
@@ -601,7 +813,7 @@ npm run test:smoke:production
 
 再用一個不在 `admins` 的 GitHub 帳號測試，應只看到 `Unauthorized / Not an administrator`，不洩漏其他 admin 資訊。
 
-### 16. 匿名投稿測試（瀏覽器）
+### 16. 大安匿名投稿測試（瀏覽器）
 
 送出一篇清楚標記為 production approve test 的投稿，記下 UI 顯示的 submission id，確認成功訊息與管理頁 status=`pending`，並確認公開頁未要求登入。這篇會在第 17 步 approve，不會遺留 pending 測試資料。
 
@@ -650,6 +862,7 @@ npx wrangler d1 execute DB --remote --env production --command \
 dist/
 .pages-dist/
 .wrangler/
+tmp/
 *.log
 ```
 
@@ -660,12 +873,13 @@ dist/
 ```bash
 npm run check
 npm test
-npm audit
+npm audit --audit-level=low
 npm run build
+npm run render:fixtures
 ```
 
 - `npm test` 使用記憶體中的真實 SQLite migrations；GitHub token exchange/profile 完全 mock。
-- 測試涵蓋 OAuth、session、CSRF、roles、audit、production cookies、CORS、health、錯誤遮蔽、Pages artifact 與 owner bootstrap SQL。
+- 測試涵蓋 PBKDF2 與 Unicode password policy、local login normalization／統一錯誤、IP＋username rate limit、session rotation、password change、0004 相容性、last-owner triggers、安全 CLI、OAuth、CSRF、roles、audit、production cookies、CORS、health、錯誤遮蔽、Pages artifact 與 owner bootstrap SQL。
 - `npm run build` 是 `wrangler deploy --dry-run --env production`，只 bundle、不部署。
 
 ## 修改網站文字
@@ -689,4 +903,4 @@ Pages build 會把 public HTML fallback 與 `content.json` 的 social image URL 
 - Cloudflare rate limiting
 - 新 framework
 
-Rate limit 與 CAPTCHA adapter 仍保留在程式邊界並預設關閉，沒有在第三階段建立或啟用任何資源。
+此處的「Cloudflare rate limiting」指未接入的外部服務；公開投稿的 `RATE_LIMITING_ENABLED` 與 `CAPTCHA_ENABLED` 預設關閉。帳密登入則已有內建 IP＋username 限流，以 `LOGIN_RATE_LIMIT_*` 設定；啟用 local login 時會執行，與投稿防濫用開關無關。

@@ -2,6 +2,13 @@ import { HttpError } from "./errors.js";
 
 export const MAX_CONTENT_LENGTH = 1000;
 export const MAX_REQUEST_BYTES = 16 * 1024;
+export const ADMIN_SUBMISSION_STATUSES = Object.freeze([
+  "pending",
+  "approved",
+  "rejected",
+  "posted"
+]);
+const ADMIN_SUBMISSION_STATUS_SET = new Set(ADMIN_SUBMISSION_STATUSES);
 
 function contentLength(value) {
   return Array.from(value).length;
@@ -63,7 +70,10 @@ async function readTextWithLimit(request, maxBytes) {
   return text + decoder.decode();
 }
 
-export async function parseJsonBody(request) {
+export async function parseJsonObject(
+  request,
+  { allowedKeys, maxBytes = MAX_REQUEST_BYTES } = {}
+) {
   const contentType = request.headers.get("Content-Type") ?? "";
   const mediaType = contentType.split(";", 1)[0].trim().toLowerCase();
   if (mediaType !== "application/json") {
@@ -74,7 +84,7 @@ export async function parseJsonBody(request) {
     );
   }
 
-  const rawBody = await readTextWithLimit(request, MAX_REQUEST_BYTES);
+  const rawBody = await readTextWithLimit(request, maxBytes);
   let value;
 
   try {
@@ -87,13 +97,21 @@ export async function parseJsonBody(request) {
     throw new HttpError(400, "INVALID_BODY", "請求內容格式不正確。")
   }
 
-  const allowedKeys = new Set(["content", "captchaToken"]);
-  const unexpectedKeys = Object.keys(value).filter((key) => !allowedKeys.has(key));
+  const allowed = allowedKeys ? new Set(allowedKeys) : null;
+  const unexpectedKeys = allowed
+    ? Object.keys(value).filter((key) => !allowed.has(key))
+    : [];
   if (unexpectedKeys.length > 0) {
     throw new HttpError(400, "UNEXPECTED_FIELDS", "請求包含不支援的欄位。")
   }
 
   return value;
+}
+
+export async function parseJsonBody(request) {
+  return parseJsonObject(request, {
+    allowedKeys: ["content", "captchaToken"]
+  });
 }
 
 export function parsePositiveInteger(value, label = "ID") {
@@ -116,6 +134,19 @@ export function parseLimit(value, { defaultValue = 50, max = 100 } = {}) {
 
   const parsed = parsePositiveInteger(value, "limit");
   return Math.min(parsed, max);
+}
+
+export function parseSubmissionStatus(value, { defaultValue = "pending" } = {}) {
+  const status = value === null || value === "" ? defaultValue : value;
+  if (!ADMIN_SUBMISSION_STATUS_SET.has(status)) {
+    throw new HttpError(
+      400,
+      "INVALID_SUBMISSION_STATUS",
+      "投稿狀態不正確。"
+    );
+  }
+
+  return status;
 }
 
 export const __testables = Object.freeze({ contentLength, readTextWithLimit });

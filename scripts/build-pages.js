@@ -5,7 +5,7 @@ import {
   rm,
   writeFile
 } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -96,10 +96,10 @@ function adminRedirectHtml(apiOrigin) {
     <meta name="referrer" content="no-referrer">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'">
     <meta http-equiv="refresh" content="0; url=${adminUrl}">
-    <title>前往管理後台</title>
+    <title>大安匿名｜前往管理後台</title>
   </head>
   <body>
-    <p><a href="${adminUrl}" rel="noreferrer">前往安全管理後台</a></p>
+    <p><a href="${adminUrl}" rel="noreferrer">前往大安匿名管理後台</a></p>
   </body>
 </html>
 `;
@@ -127,7 +127,10 @@ export async function buildPages({
 
   await rm(output, { recursive: true, force: true });
   await mkdir(output, { recursive: true });
-  await cp(source, output, { recursive: true });
+  await cp(source, output, {
+    recursive: true,
+    filter: (path) => !basename(path).startsWith("._") && basename(path) !== ".DS_Store"
+  });
 
   const apiOrigin = apiUrl.origin;
   const socialImage = new URL("og.png", frontendUrl).href;

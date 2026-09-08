@@ -26,49 +26,56 @@ const devProvider = {
     return "";
   },
   identity() {
-    return { githubUsername: "local-development", role: "admin" };
+    return {
+      username: "local-development",
+      githubUsername: null,
+      authMethods: ["dev"],
+      role: "admin"
+    };
   }
 };
 
-const githubState = {
+const sessionState = {
   csrfToken: "",
   user: null
 };
 
-const githubProvider = {
-  mode: "github",
+const sessionProvider = {
+  mode: "session",
   requiresCredentialEntry: false,
   hasCredential() {
-    return Boolean(githubState.user && githubState.csrfToken);
+    return Boolean(sessionState.user && sessionState.csrfToken);
   },
   setCredential() {},
   setSession(session) {
-    githubState.csrfToken = typeof session?.csrfToken === "string"
+    sessionState.csrfToken = typeof session?.csrfToken === "string"
       ? session.csrfToken
       : "";
-    githubState.user = session?.user ?? null;
+    sessionState.user = session?.user ?? null;
   },
   clearCredential() {
-    githubState.csrfToken = "";
-    githubState.user = null;
+    sessionState.csrfToken = "";
+    sessionState.user = null;
   },
   requestHeaders({ mutation = false } = {}) {
-    if (!mutation || !githubState.csrfToken) {
+    if (!mutation || !sessionState.csrfToken) {
       return {};
     }
-    return { "X-CSRF-Token": githubState.csrfToken };
+    return { "X-CSRF-Token": sessionState.csrfToken };
   },
   signInUrl() {
     return apiUrl("/api/auth/github");
   },
   identity() {
-    return githubState.user;
+    return sessionState.user;
   }
 };
 
 const providers = Object.freeze({
   dev: Object.freeze(devProvider),
-  github: Object.freeze(githubProvider)
+  github: Object.freeze(sessionProvider),
+  local: Object.freeze(sessionProvider),
+  session: Object.freeze(sessionProvider)
 });
 
 const configuredMode = window.APP_CONFIG?.ADMIN_AUTH_MODE?.trim().toLowerCase()

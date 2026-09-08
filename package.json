@@ -11,16 +11,29 @@
     "db:migrate:production": "wrangler d1 migrations apply DB --remote --env production",
     "db:migrations:list:production": "wrangler d1 migrations list DB --remote --env production",
     "bootstrap:owner": "node scripts/bootstrap-owner.js",
+    "admin:add-local": "node scripts/manage-admin.js add-local",
+    "admin:list": "node scripts/manage-admin.js list",
+    "admin:set-role": "node scripts/manage-admin.js set-role",
+    "admin:disable": "node scripts/manage-admin.js disable",
+    "admin:enable": "node scripts/manage-admin.js enable",
+    "admin:set-password": "node scripts/manage-admin.js set-password",
     "generate:og": "node scripts/generate-og-svg.mjs",
+    "render:fixtures": "node scripts/render-fixtures.mjs",
     "check": "node scripts/check-source.mjs",
     "test": "node --test test/*.test.js",
     "test:smoke": "node scripts/smoke-test.mjs",
     "test:smoke:production": "node scripts/smoke-production.js"
   },
   "devDependencies": {
+    "esbuild": "0.28.1",
+    "miniflare": "5.20260828.0-alpha",
     "wrangler": "4.127.1"
   },
   "engines": {
     "node": ">=22.5"
+  },
+  "dependencies": {
+    "@resvg/resvg-wasm": "2.6.2",
+    "opentype.js": "1.3.4"
   }
 }

@@ -3,7 +3,7 @@ import { verifyAdminCsrf } from "../auth.js";
 import { jsonResponse } from "../http.js";
 import {
   createSubmission,
-  listPendingSubmissions,
+  listSubmissionsByStatus,
   updatePendingSubmissionStatus,
   updatePendingSubmissionStatusWithAudit
 } from "../repositories/submissions.js";
@@ -13,6 +13,7 @@ import {
   parseJsonBody,
   parseLimit,
   parsePositiveInteger,
+  parseSubmissionStatus,
   validateSubmissionContent
 } from "../validation.js";
 
@@ -43,13 +44,14 @@ export async function createSubmissionHandler(request, env) {
 export async function listPendingSubmissionsHandler(request, env) {
   const url = new URL(request.url);
   const limit = parseLimit(url.searchParams.get("limit"));
-  const submissions = await listPendingSubmissions(env.DB, limit);
+  const status = parseSubmissionStatus(url.searchParams.get("status"));
+  const submissions = await listSubmissionsByStatus(env.DB, status, limit);
 
   return jsonResponse({
     ok: true,
     data: {
       submissions,
-      meta: { count: submissions.length, limit }
+      meta: { count: submissions.length, limit, status }
     }
   });
 }
@@ -67,7 +69,7 @@ export async function moderateSubmissionHandler(
   const auditAction = action === "approve"
     ? "approve_submission"
     : "reject_submission";
-  const result = principal.provider === "github"
+  const result = principal.provider !== "dev"
     ? await updatePendingSubmissionStatusWithAudit(env.DB, id, nextStatus, {
       adminId: principal.adminId,
       action: auditAction,

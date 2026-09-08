@@ -7,7 +7,8 @@ import {
   parseJsonBody,
   parseLimit,
   parsePositiveInteger,
-  validateSubmissionContent
+  validateSubmissionContent,
+  parseSubmissionStatus
 } from "../worker/src/validation.js";
 
 test("validates and trims normal submission content", () => {
@@ -99,4 +100,14 @@ test("validates IDs and clamps list limit", () => {
   assert.equal(parseLimit("500"), 100);
   assert.throws(() => parsePositiveInteger("0"), (error) => error.code === "INVALID_ID");
   assert.throws(() => parsePositiveInteger("1.5"), (error) => error.code === "INVALID_ID");
+});
+
+test("validates admin submission status filters", () => {
+  assert.equal(parseSubmissionStatus(null), "pending");
+  assert.equal(parseSubmissionStatus("approved"), "approved");
+  assert.equal(parseSubmissionStatus("rejected"), "rejected");
+  assert.throws(
+    () => parseSubmissionStatus("ready"),
+    (error) => error.code === "INVALID_SUBMISSION_STATUS"
+  );
 });

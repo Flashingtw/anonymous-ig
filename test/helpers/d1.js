@@ -83,7 +83,9 @@ export function createTestDatabase() {
 
   for (const migration of [
     "../../migrations/0001_create_submissions.sql",
-    "../../migrations/0002_create_admin_auth.sql"
+    "../../migrations/0002_create_admin_auth.sql",
+    "../../migrations/0003_add_submission_rendering.sql",
+    "../../migrations/0004_add_local_admin_auth.sql"
   ]) {
     database.exec(readFileSync(new URL(migration, import.meta.url), "utf8"));
   }

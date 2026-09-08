@@ -27,6 +27,28 @@ export function getAdminAuthProvider(env) {
   return env.ADMIN_AUTH_PROVIDER?.trim().toLowerCase() || "github";
 }
 
+export function getAdminAuthProviders(env) {
+  const configured = env.ADMIN_AUTH_PROVIDERS?.trim()
+    ? env.ADMIN_AUTH_PROVIDERS
+    : getAdminAuthProvider(env);
+  const providers = new Set(
+    configured
+      .split(",")
+      .map((provider) => provider.trim().toLowerCase())
+      .filter((provider) => new Set(["github", "local", "dev"]).has(provider))
+  );
+  if (env.LOCAL_AUTH_ENABLED === "true") {
+    providers.add("local");
+  } else {
+    providers.delete("local");
+  }
+  return providers;
+}
+
+export function isAdminAuthProviderEnabled(env, provider) {
+  return getAdminAuthProviders(env).has(provider);
+}
+
 export function requireSessionSecret(env) {
   const secret = env.SESSION_SECRET?.trim() ?? "";
   if (secret.length < 32 || secret.startsWith("replace-with-")) {
@@ -81,13 +103,15 @@ async function authenticateDevAdmin(request, env) {
     adminId: null,
     provider: "dev",
     githubUserId: null,
-    githubUsername: "local-development",
+    githubUsername: null,
+    username: "local-development",
+    authMethods: [],
     role: "admin",
     roles: ["admin"]
   });
 }
 
-async function authenticateGithubAdmin(request, env) {
+async function authenticateSessionAdmin(request, env) {
   const sessionToken = parseCookies(request).get(SESSION_COOKIE_NAME) ?? "";
   if (!sessionToken || sessionToken.length > 256) {
     throw new HttpError(401, "UNAUTHORIZED", "請先登入管理員帳號。");
@@ -104,9 +128,11 @@ async function authenticateGithubAdmin(request, env) {
   return Object.freeze({
     id: session.adminId,
     adminId: session.adminId,
-    provider: "github",
+    provider: "session",
     githubUserId: session.githubUserId,
     githubUsername: session.githubUsername,
+    username: session.username,
+    authMethods: session.authMethods,
     role: session.role,
     roles: [session.role],
     sessionToken,
@@ -115,23 +141,19 @@ async function authenticateGithubAdmin(request, env) {
   });
 }
 
-const AUTH_PROVIDERS = Object.freeze({
-  dev: authenticateDevAdmin,
-  github: authenticateGithubAdmin
-});
-
 export async function authenticateAdmin(request, env) {
-  const provider = AUTH_PROVIDERS[getAdminAuthProvider(env)];
-
-  if (!provider) {
+  const providers = getAdminAuthProviders(env);
+  if (providers.has("dev")) {
+    return authenticateDevAdmin(request, env);
+  }
+  if (!providers.has("github") && !providers.has("local")) {
     throw new HttpError(
       503,
       "ADMIN_AUTH_NOT_CONFIGURED",
       "管理員登入尚未設定完成。"
     );
   }
-
-  return provider(request, env);
+  return authenticateSessionAdmin(request, env);
 }
 
 export function authorizeAdmin(principal, allowedRoles = ADMIN_ROLES) {
@@ -173,5 +195,6 @@ export const __testables = Object.freeze({
   extractBearerToken,
   timingSafeEqual,
   authenticateDevAdmin,
-  authenticateGithubAdmin
+  authenticateGithubAdmin: authenticateSessionAdmin,
+  authenticateSessionAdmin
 });
