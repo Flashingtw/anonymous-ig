@@ -21,6 +21,7 @@ import {
 } from "./handlers/auth.js";
 import { healthHandler } from "./handlers/health.js";
 import { accessLoginHandler } from "./handlers/access-auth.js";
+import { adminDirectoryHandler } from "./handlers/admin-directory.js";
 import {
   authProvidersHandler,
   changePasswordHandler,
@@ -185,6 +186,12 @@ export async function routeApi(request, env, dependencies = {}) {
 
   if (isAdminRoute) {
     principal = authorizeAdmin(await authenticateAdmin(request, env));
+  }
+
+  if (pathname === "/api/admin/admins") {
+    authorizeAdmin(principal, ["owner"]);
+    if (request.method !== "GET") return methodNotAllowed(["GET"]);
+    return adminDirectoryHandler(request, env, principal);
   }
 
   if (pathname === "/api/admin/submissions") {

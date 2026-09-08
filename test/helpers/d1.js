@@ -77,7 +77,7 @@ class TestD1Database {
   }
 }
 
-export function createTestDatabase({ access = true } = {}) {
+export function createTestDatabase({ access = true, team = true } = {}) {
   const database = new DatabaseSync(":memory:");
   database.exec("PRAGMA foreign_keys = ON;");
 
@@ -91,6 +91,7 @@ export function createTestDatabase({ access = true } = {}) {
 
   if (access) {
     database.exec(readFileSync(new URL("../../migrations/0005_add_access_email.sql", import.meta.url), "utf8"));
+    if (team) database.exec(readFileSync(new URL("../../migrations/0006_access_only_admins.sql", import.meta.url), "utf8"));
   }
 
   return {

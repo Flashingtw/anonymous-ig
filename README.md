@@ -1,6 +1,8 @@
-# 大安匿名 / DAAN ANONYMOUS — Access Email OTP integration
+# 大安匿名 / DAAN ANONYMOUS — Admin UX + Team Accounts
 
-Phase 4.6 本機候選：`codex/access-email-otp-integration`，基準 `98858477827a7076b0e43cde2ed7f9f252fe2076`。GitHub OAuth 保留且獨立；Email OTP 和 GitHub 共用既有 D1 opaque session。沒有 renderer、字型、R2、0003、render API、產圖 UI 或 Instagram 變更。不可 merge 整條 renderer branch。
+Phase 4.7 本機候選：`codex/admin-ux-team-accounts`，基底為 Phase 4.6 已完成 checkpoint `2027f800218ff1d109d202855451de9d61aa3648`。新版 UI、Access-only team CLI 與 0006 **尚未部署 production**。GitHub OAuth 保留且獨立；Email OTP 和 GitHub 共用既有 D1 opaque session。沒有 renderer、遠端字型、R2、0003、render API、產圖 UI 或 Instagram 變更。不可 merge 整條 renderer branch。
+
+Phase 4.6 正式 Gate 已完成：Access Email OTP enabled、GitHub 備援正常、LOCAL_AUTH_ENABLED=false。Repo 的 Access=false 是保守部署預設，**不代表正式站仍關閉**。4.7 實作、角色矩陣、截圖與限制見 [Phase 4.7 文件](docs/phase-4.7-admin-ux-team-accounts.md)。本輪不執行任何正式部署或帳號建立。
 
 部署前先讀本 README、[部署狀態快照](docs/deployment-status.md) 和 [Access 實作／rollout gates](docs/access-email-otp-integration.md)，再查遠端。**本機通過不代表 production 已更新。** 舊 Phase 4.5 報告只作歷史 checkpoint，不再是啟用 password 的指示。
 
@@ -44,7 +46,7 @@ npm run build
 npm run check:rollout
 ```
 
-build 是 Worker production **dry-run**，不 deploy。check:rollout 檢查隔離邊界並重跑固定舊 Worker 在新 schema 的 OAuth／security／moderation 測試。Migrations 只有 0001、0002、0004、0005；前三個不改，沒有 0003。
+build 是 Worker production **dry-run**，不 deploy。check:rollout 檢查隔離邊界並重跑固定舊 Worker 在新 schema 的 OAuth／security／moderation 測試。Migrations 只有 0001、0002、0004、0005、0006；前四個不改，沒有 0003。0006 只在隔離本機資料庫測試，尚未套到 production。
 
 ## Email 綁定：既有 admin，不新增帳號
 
@@ -59,13 +61,25 @@ npm run admin:bind-access-email -- --github-user-id YOUR_NUMERIC_ID --email admi
 
 預覽顯示 target admin id／GitHub identity／role／enabled／email，須核對同一列。拒絕 duplicate、disabled、already-bound、missing／ambiguous identity 及 preview 後 identity 變更。不接受 password／role 參數、不覆寫 mapping。UPDATE＋audit 使用同一 D1 file transaction；DB error 回滾，傳輸失敗結果可能不確定，先唯讀查核再重試。Audit 只記 target admin id／provider，不記 email／JWT／password／hash。Binding 保留 sessions。
 
-Production 另行批准後才使用 --remote。沒有公開 registration API，也不新增 email-only admin。0004 的「GitHub 或完整 local identity」约束保留；朋友 moderator 建立流程須另行批准，不能假設 binding CLI 會建立帳號。
+Production 另行批准後才使用 --remote。Binding CLI 仍不新增帳號。Phase 4.7 的 0006 允許 Access-only admin，但仍要求至少一種完整登入 identity；沒有公開 registration API。
+
+## Team accounts（本機候選）
+
+owner / admin / moderator 均可查看、Approve、Reject 投稿；只有 owner 可 GET `/api/admin/admins`。管理員頁只讀，沒有 Web mutation API。Email-only identity 在 D1 對應原本 admin id，登入仍用同一套 JWT / session / CSRF / audit。
+
+```sh
+npm run admin:create-access -- --email friend@example.com --role moderator --local
+npm run admin:create-access -- --email friend@example.com --role moderator --local --execute
+```
+
+CLI 預設 dry-run、role=moderator；允許 admin / moderator，禁止 owner。trim + lowercase、UNIQUE、enabled=true、INSERT + audit 同一 transaction。GitHub / local credentials 都是 NULL。
+正式朋友 onboarding 另行批准，需同時完成 D1 moderator + Cloudflare Access exact-email allowlist（Require OTP）；不會自動修改 Access policy。
 
 歷史 password 規則仍保留：username 3–32 個英數字或 _、-、.；password 8–128 Unicode grapheme clusters、最多 1024 UTF-8 bytes、不可全空白、不 trim。舊 CLI 存在不代表允許執行正式 reset／rehash。
 
-## Production rollout：未執行，每關另行批准
+## Phase 4.6 rollout 歷史參考：已完成，不可直接重跑
 
-先固定候選 commit／CI、核對 Free 方案、實際 Worker／D1／Access 設定與備份。Repo 目標設定不等於線上值。
+以下為前階段 Gate 概要，不是 Phase 4.7 部署指令。Phase 4.7 需另行制定 0006／Worker／Pages 的受控 rollout；目前只做 local visual review。Repo 目標設定不等於線上值。
 
 1. 查 ledger、schema、owner／row counts、Time Travel checkpoint；只 apply pending 0005，核對資料保留與舊 Worker。
 2. Dry-run 後把 owner email 綁到原 admins.id=1；核對身份、角色、enabled、row count、audit；保留 password 與 sessions。

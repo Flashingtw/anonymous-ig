@@ -5,34 +5,42 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex,nofollow">
     <meta name="referrer" content="no-referrer">
-    <meta name="theme-color" content="#f4f1ea">
+    <meta name="theme-color" content="#20211f">
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'self'"
     >
-    <title data-copy="admin.pageTitle">投稿管理</title>
+    <title data-copy="admin.pageTitle">大安匿名｜管理後台</title>
     <link rel="stylesheet" href="../assets/styles.css">
     <script src="../config.js"></script>
     <script src="../assets/admin.js" type="module"></script>
   </head>
   <body class="admin-page">
+    <a class="skip-link" href="#admin-main">跳至主要內容</a>
     <header class="site-header container">
       <a class="brand" href="../" aria-label="回到匿名投稿首頁" data-copy="admin.homeAriaLabel" data-copy-attribute="aria-label">
         <span class="brand__mark" aria-hidden="true" data-copy="site.brandMark">匿</span>
-        <span data-copy="site.brandName">匿名投稿</span>
+        <span data-copy="site.brandName">大安匿名</span>
       </a>
       <span class="eyebrow" data-copy="admin.eyebrow">MODERATION</span>
     </header>
 
-    <main class="container admin-main">
+    <main id="admin-main" class="container admin-main" tabindex="-1">
       <section id="auth-panel" class="auth-layout" aria-labelledby="auth-title">
         <div class="auth-copy">
           <p id="auth-kicker" class="kicker" data-copy="admin.auth.kicker">DAAN ANONYMOUS</p>
           <h1 id="auth-title" class="admin-auth-title" data-copy="admin.auth.title">大安匿名</h1>
           <p id="auth-description" data-copy="admin.auth.description">使用 Email 驗證碼或 GitHub 登入。</p>
+          <div class="wall-note auth-note">
+            <span class="note-number">BEHIND THE WALL</span>
+            <p>讓每一個聲音，<br>被好好對待。</p>
+            <span class="note-signature">審核之前，先理解。</span>
+          </div>
         </div>
 
         <div class="panel auth-panel">
+          <p class="step-label">01 / TEAM ACCESS</p>
+          <h2>回到匿名牆的另一側。</h2>
           <div id="session-auth-panel" class="auth-stack" hidden>
             <div id="access-auth-panel" hidden>
               <a id="access-sign-in" class="button button--primary button--wide" href="/api/auth/access">
@@ -78,7 +86,7 @@
             </div>
 
             <div id="github-auth-panel" hidden>
-              <a id="github-sign-in" class="button button--primary button--wide" href="/api/auth/github">
+              <a id="github-sign-in" class="button button--secondary button--wide" href="/api/auth/github">
                 <span data-copy="admin.auth.githubSignInLabel">Sign in with GitHub</span>
                 <span aria-hidden="true">→</span>
               </a>
@@ -113,6 +121,11 @@
       </section>
 
       <section id="dashboard" hidden>
+        <nav class="admin-nav" aria-label="管理頁面">
+          <button id="queue-tab" class="button" type="button" aria-pressed="true">01 / 投稿審核</button>
+          <button id="team-tab" class="button" type="button" aria-pressed="false" hidden>02 / 管理員</button>
+          <span class="nav-note">PRIVATE WORKSPACE</span>
+        </nav>
         <div id="dev-banner" class="dev-banner" role="note" hidden>
           <span class="dev-banner__dot" aria-hidden="true">●</span>
           <span data-copy="admin.dashboard.devBanner">開發管理模式已啟用。</span>
@@ -136,6 +149,14 @@
           </div>
         </div>
 
+        <section id="team-panel" class="panel team-panel" aria-labelledby="team-title" hidden>
+          <p class="step-label">PEOPLE BEHIND THE WALL</p>
+          <h2 id="team-title">管理員</h2>
+          <p class="field__hint">唯讀名冊。新增成員請使用 CLI，並另外設定 Access Email allowlist。</p>
+          <p id="team-status" role="status" aria-live="polite"></p>
+          <div id="team-list" class="team-list"></div>
+        </section>
+        <div id="queue-panel">
         <section id="password-account-panel" class="panel account-panel" aria-labelledby="password-account-title" hidden>
           <div class="account-panel__heading">
             <div>
@@ -189,6 +210,7 @@
         </section>
 
         <section id="submissions-list" class="submission-list" aria-label="待審核投稿清單" data-copy="admin.dashboard.listAriaLabel" data-copy-attribute="aria-label"></section>
+        </div>
       </section>
     </main>
   </body>

@@ -1,27 +1,27 @@
 {
   "site": {
     "brandMark": "匿",
-    "brandName": "匿名投稿",
-    "footerTagline": "PRIVATE BY DEFAULT",
-    "footerCopyright": "© {year} ANONYMOUS INBOX"
+    "brandName": "大安匿名",
+    "footerTagline": "DAAN ANONYMOUS / 你的名字，留白。",
+    "footerCopyright": "© {year} 大安匿名"
   },
   "publicPage": {
-    "pageTitle": "匿名投稿",
+    "pageTitle": "大安匿名｜DAAN ANONYMOUS",
     "metaDescription": "不需登入的匿名投稿頁，投稿將先由管理員審核。",
-    "homeAriaLabel": "匿名投稿首頁",
-    "eyebrow": "OPEN INBOX",
-    "kicker": "匿名・免登入",
-    "title": "留下想說的話",
-    "description": "送出後會先審核。",
+    "homeAriaLabel": "大安匿名首頁",
+    "eyebrow": "AN OPEN WALL. A SAFE SPACE.",
+    "kicker": "DAAN ANONYMOUS",
+    "title": "大安匿名",
+    "description": "把想說的，留在這裡。",
     "form": {
-      "stepLabel": "01 / WRITE",
-      "title": "匿名投稿",
-      "privacyBadge": "匿名",
-      "contentLabel": "投稿內容",
-      "placeholder": "在這裡寫下內容⋯",
-      "privacyHint": "請勿留下可辨識身分的資訊。",
+      "stepLabel": "01 / LEAVE A NOTE",
+      "title": "發送匿名",
+      "privacyBadge": "不需登入",
+      "contentLabel": "你的匿名投稿",
+      "placeholder": "想說點甚麼?",
+      "privacyHint": "請勿投稿個資或惡意內容。送出前，再讀一次吧。",
       "submitLabel": "送出投稿",
-      "consent": "內容可能經整理後公開刊登。"
+      "consent": "投稿不會立即公開，審核後才有機會刊登。"
     },
     "messages": {
       "characterCount": "{current} / {max} 字",
@@ -34,9 +34,9 @@
     }
   },
   "admin": {
-    "pageTitle": "投稿管理",
-    "homeAriaLabel": "回到匿名投稿首頁",
-    "eyebrow": "MODERATION",
+    "pageTitle": "大安匿名｜管理後台",
+    "homeAriaLabel": "回到大安匿名首頁",
+    "eyebrow": "THE OTHER SIDE OF THE WALL",
     "auth": {
       "kicker": "DAAN ANONYMOUS",
       "title": "大安匿名",
@@ -58,9 +58,9 @@
     },
     "dashboard": {
       "devBanner": "開發管理模式已啟用。",
-      "kicker": "REVIEW QUEUE",
-      "title": "投稿管理",
-      "description": "審核等待處理的匿名投稿。",
+      "kicker": "MODERATION / 投稿審核",
+      "title": "好好讀，再決定。",
+      "description": "每一篇匿名投稿，都是一份信任。",
       "refreshLabel": "重新整理",
       "logoutLabel": "Logout",
       "loadingLabel": "正在載入⋯",
@@ -79,8 +79,8 @@
       "unknownTime": "時間未知",
       "pendingCount": "待審核 {count} 篇",
       "pendingBadge": "待審核",
-      "approve": "核准",
-      "reject": "拒絕",
+      "approve": "核准 Approve",
+      "reject": "拒絕 Reject",
       "approving": "核准中⋯",
       "rejecting": "拒絕中⋯",
       "approveSuccess": "投稿 #{id} 已核准。",

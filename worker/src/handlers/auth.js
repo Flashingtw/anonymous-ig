@@ -437,15 +437,20 @@ export async function githubCallbackHandler(
 export async function authMeHandler(_request, env, principal) {
   authorizeAdmin(principal);
   const csrfToken = await createCsrfToken(principal, env);
+  // Presentation metadata only; authentication/session handling stays unchanged.
+  const accessEmail = principal.adminId == null ? null : await env.DB.prepare(
+    "SELECT access_email_normalized FROM admins WHERE id=?"
+  ).bind(principal.adminId).first("access_email_normalized");
   return jsonResponse({
     ok: true,
     data: {
       user: {
+        ...(accessEmail ? { adminId: principal.adminId, accessEmail } : {}),
         username: principal.username ?? null,
         githubUsername: principal.githubUsername ?? null,
         role: principal.role,
-        authMethods: principal.authMethods
-          ?? (principal.githubUsername ? ["github"] : [])
+        authMethods: [...(principal.authMethods
+          ?? (principal.githubUsername ? ["github"] : [])), ...(accessEmail ? ["access"] : [])]
       },
       csrfToken,
       expiresAt: principal.expiresAt ?? null

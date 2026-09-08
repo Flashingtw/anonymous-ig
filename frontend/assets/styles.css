@@ -1,15 +1,15 @@
 :root {
   color-scheme: light;
-  --canvas: #f4f1ea;
+  --canvas: #20211f;
   --surface: #fffdf8;
   --surface-strong: #ffffff;
-  --ink: #1d2523;
-  --ink-muted: #65706c;
+  --ink: #252521;
+  --ink-muted: #626158;
   --line: #d9d8cf;
   --line-strong: #b7bbb3;
-  --accent: #215c4e;
-  --accent-dark: #16463b;
-  --accent-soft: #dceae4;
+  --accent: #b93e12;
+  --accent-dark: #97320f;
+  --accent-soft: #f8e5d6;
   --danger: #a33a35;
   --danger-soft: #f8e7e3;
   --success: #1d674b;
@@ -17,11 +17,11 @@
   --warning: #805b15;
   --warning-soft: #f6ebce;
   --shadow: 0 20px 60px rgba(29, 37, 35, 0.08);
-  --radius-sm: 10px;
-  --radius-md: 18px;
-  --radius-lg: 28px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
-  --font-display: Georgia, "Noto Serif TC", serif;
+  --font-display: "Microsoft JhengHei", "PingFang TC", sans-serif;
 }
 
 * {
@@ -37,9 +37,7 @@ body {
   margin: 0;
   min-height: 100vh;
   color: var(--ink);
-  background:
-    radial-gradient(circle at 85% 8%, rgba(33, 92, 78, 0.09), transparent 25rem),
-    var(--canvas);
+  background: var(--canvas);
   font-family: var(--font-sans);
   line-height: 1.6;
 }
@@ -778,4 +776,113 @@ a:focus-visible {
   .admin-toolbar .button { max-width: 100%; }
   .password-change-form { grid-template-columns: 1fr; }
   .password-change-form__actions .button { width: 100%; }
+}
+
+/* Phase 4.7 — type, paper and a restrained orange accent. No image pipeline. */
+body { color: #f1ede3; }
+.container, .container--narrow { width: min(calc(100% - 80px), 1200px); }
+.site-header { padding-block: 24px; border-color: #4d4e46; }
+.brand { font-size: 18px; letter-spacing: .1em; }
+.brand__mark { border-radius: 0; background: #ed6a36; color: #20211f; font-family: var(--font-sans); transform: rotate(-6deg); }
+.eyebrow, .site-footer { color: #bfbeb2; font-size: 11px; }
+.public-layout { display: grid; grid-template-columns: minmax(0, 1fr); width: min(calc(100% - 40px), 600px); min-height: 100svh; padding-block: 40px; align-content: center; }
+.public-layout .intro { padding: 12px 0 0; }
+.kicker { color: #f58a59; font-size: 12px; letter-spacing: .18em; }
+.submission-page .intro h1, .admin-auth-title { max-width: none; font-size: clamp(48px, 5.8vw, 82px); font-weight: 900; letter-spacing: -.06em; line-height: 1.15; margin: 20px 0; }
+.intro__copy { color: #d9d7cb; font-size: 20px; letter-spacing: .08em; }
+.wall-note { position: relative; width: min(90%, 350px); margin: 46px 0 30px 15px; padding: 27px 28px 23px; background: #e7e2d4; color: #292b25; transform: rotate(-3deg); box-shadow: 7px 8px 0 #11120f; }
+.wall-note::before { content: ""; position: absolute; width: 86px; height: 23px; left: 35%; top: -11px; background: #ed6a36; opacity: .9; transform: rotate(5deg); }
+.wall-note p { font-family: var(--font-display); font-size: 27px; font-weight: 800; line-height: 1.65; margin: 15px 0 21px; }
+.note-number, .note-signature { font-size: 11px; letter-spacing: .1em; }
+.note-signature { display: block; text-align: right; border-top: 1px solid #aaa99b; padding-top: 10px; }
+.submission-rules { padding: 6px 0 0; margin: 28px 0 0; list-style: none; color: #c5c6b9; font-size: 13px; line-height: 2.1; }
+.submission-rules li::before { content: "+"; color: #f58a59; margin-right: 12px; }
+.panel { background: #f3efe5; color: var(--ink); border: 1px solid #d6d1c4; border-radius: 2px; box-shadow: 5px 6px 0 #141512; }
+.submission-panel { position: relative; padding: 32px; border-top: 5px solid #ed6a36; }
+.panel__heading { margin-bottom: 30px; }
+.panel__heading h2, .submission-panel h1 { font-weight: 800; font-size: 24px; margin-bottom: 0; }
+.step-label { color: #6c665d; font-size: 10px; }
+.privacy-badge, .status-badge, .count-badge, .role-badge { border-radius: 2px; }
+.privacy-badge { border: 1px solid #bdb5a4; background: transparent; color: #57564d; transform: rotate(4deg); }
+textarea { min-height: 250px; background: #faf8f1; padding: 18px; line-height: 1.9; border-color: #bcb6a8; }
+textarea::placeholder, input::placeholder { color: #77756b; }
+textarea:focus, input:focus { border-color: #b93e12; box-shadow: 0 0 0 3px #f6c6ae; }
+.button { letter-spacing: .02em; }
+.button--primary { background: #292b26; color: #fff8eb; }
+.button--primary:hover:not(:disabled) { background: #b93e12; }
+.button:focus-visible, a:focus-visible { outline: 3px solid #ed6a36; outline-offset: 4px; }
+#submit-button { background: #b93e12; }
+#submit-button:hover:not(:disabled) { background: #97320f; }
+.button--quiet { color: inherit; border-color: currentColor; }
+.public-layout .consent-note { color: var(--ink-muted); text-align: left; margin: 18px 0 0; padding: 0; }
+.site-footer { border-color: #4d4e46; padding-block: 22px; }
+.auth-layout { min-height: calc(100vh - 260px); grid-template-columns: 1fr 1fr; gap: 80px; }
+.auth-copy p:last-child { color: inherit; }
+#auth-description { color: #c5c6b9; max-width: 400px; }
+.auth-note { margin-top: 52px; width: 340px; max-width: 90%; }
+.auth-note p { font-size: 25px; }
+.auth-panel { padding: 38px; border-top: 5px solid #ed6a36; }
+.auth-panel h2 { margin: 14px 0 22px; font-size: 23px; }
+.auth-panel .field__hint { line-height: 1.85; }
+.auth-stack { gap: 14px; }
+#access-auth-panel .button--wide { margin-top: 0; }
+.admin-nav { display: flex; align-items: center; gap: 22px; margin-bottom: 38px; border-bottom: 1px solid #53544c; }
+.admin-nav .button { color: #c1c2b7; border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: transparent; padding: 10px 0 16px; }
+.admin-nav .button[aria-pressed="true"] { color: #f6efe1; border-color: #f07a43; }
+.nav-note { margin-left: auto; color: #a8aa9f; letter-spacing: .13em; font-size: 10px; }
+.admin-heading { align-items: flex-start; }
+.admin-heading h1 { font-size: 36px; font-weight: 850; letter-spacing: -.03em; }
+.admin-heading p:last-child { color: #c1c2b7; font-size: 13px; }
+.admin-toolbar { max-width: 490px; }
+.admin-identity { color: #e3e1d5; }
+.role-badge, .count-badge { background: #383a32; color: #f3c3a7; border: 1px solid #62604f; }
+.admin-identity { flex-basis: 100%; justify-content: flex-end; }
+#admin-username { min-width: 0; overflow-wrap: anywhere; }
+.submission-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.submission-card { padding: 26px; border-top: 3px solid #c7c0af; display: flex; flex-direction: column; }
+.submission-card__meta { flex-wrap: wrap; gap: 8px 12px; }
+.submission-card__id { font-size: 22px; font-family: ui-monospace, monospace; letter-spacing: -.05em; }
+.submission-card__content { flex: 1; font-family: var(--font-sans); font-size: 17px; line-height: 1.9; margin: 24px 0; }
+.submission-card__error:empty { display: none; }
+.status-badge--pending { color: #784415; background: #ede1ca; }
+.team-panel { padding: 32px; }
+.team-panel h2 { font-size: 30px; margin-bottom: 8px; }
+.team-list { display: grid; gap: 0; margin-top: 24px; }
+.team-member { border-top: 1px solid #c7c0b1; padding: 22px 0; overflow-wrap: anywhere; }
+.team-member h3 { margin: 0 0 4px; font-size: 19px; }
+.team-member p { margin: 0 0 4px; color: #666257; font-size: 14px; }
+.team-member .team-member__meta { color: #954017; font-size: 12px; }
+.skip-link { position: fixed; top: -100px; left: 16px; padding: 12px; z-index: 10; background: #f3efe5; color: #252521; }
+.skip-link:focus { top: 8px; }
+@media (max-width: 900px) {
+  .container, .container--narrow { width: calc(100% - 40px); }
+  .public-layout { gap: 28px; padding-top: 40px; }
+  .auth-layout { gap: 32px; }
+  .admin-heading { flex-direction: column; gap: 22px; }
+  .admin-toolbar { max-width: none; justify-content: flex-start; }
+  .admin-identity { justify-content: flex-start; }
+  .auth-panel, .submission-panel { padding: 24px; }
+}
+@media (max-width: 640px) {
+  .container, .container--narrow { width: calc(100% - 32px); }
+  .site-header { padding-block: 18px; }
+  .public-layout, .auth-layout { grid-template-columns: 1fr; gap: 30px; }
+  .public-layout { padding-top: 22px; }
+  .submission-page .public-layout { width: calc(100% - 32px); padding-block: 24px; }
+  .submission-page .intro h1, .admin-auth-title { font-size: 54px; margin: 14px 0; }
+  .intro__copy { font-size: 17px; }
+  .wall-note { width: 250px; margin: 30px 0 24px 12px; padding: 17px 23px; }
+  .wall-note p { font-size: 22px; margin: 10px 0 14px; }
+  .auth-note { display: none; }
+  .submission-rules { font-size: 12px; }
+  .public-layout .consent-note { grid-column: 1; }
+  textarea { min-height: 225px; }
+  .admin-main { padding-top: 28px; }
+  .admin-nav { gap: 24px; margin-bottom: 28px; }
+  .nav-note { display: none; }
+  .admin-heading h1 { font-size: 30px; }
+  .submission-list { grid-template-columns: 1fr; gap: 18px; }
+  .submission-card { padding: 22px; }
+  .status-badge--pending { margin-left: auto; }
+  .team-panel { padding: 24px; }
 }

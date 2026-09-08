@@ -14,6 +14,7 @@
     "admin:add-local": "node scripts/manage-admin.js add-local",
     "admin:bind-local": "node scripts/manage-admin.js bind-local",
     "admin:bind-access-email": "node scripts/bind-access-email.js",
+    "admin:create-access": "node scripts/create-access-admin.js",
     "admin:list": "node scripts/manage-admin.js list",
     "admin:set-role": "node scripts/manage-admin.js set-role",
     "admin:disable": "node scripts/manage-admin.js disable",

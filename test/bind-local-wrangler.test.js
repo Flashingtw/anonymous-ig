@@ -7,6 +7,7 @@ import test from "node:test";
 import { executeSql, runCli } from "../scripts/manage-admin.js";
 import { verifyPassword } from "../worker/src/security/passwords.js";
 import { runCli as bindAccessEmail } from "../scripts/bind-access-email.js";
+import { runCli as createAccessAdmin } from "../scripts/create-access-admin.js";
 
 test("real Wrangler binds in an isolated D1 and rolls back an audit failure", { timeout: 120_000 }, async (t) => {
   const persistence = await mkdtemp(join(tmpdir(), "anonymous-bind-test-"));
@@ -64,4 +65,24 @@ test("real Wrangler binds in an isolated D1 and rolls back an audit failure", { 
   await execute({ sql: "CREATE TRIGGER fail_access_audit BEFORE INSERT ON audit_logs BEGIN SELECT RAISE(ABORT, 'AUDIT_UNAVAILABLE'); END;" });
   await assert.rejects(bindAccessEmail(["--github-user-id", "202", "--email", "other@example.com", "--local", "--execute"], dependencies), /binding failed/);
   assert.equal((await query({ sql: "SELECT access_email FROM admins WHERE id=8" }))[0].access_email, null);
+  await execute({ sql: "DROP TRIGGER fail_access_audit;" });
+  // 0006 must also work in real local D1 with populated parent/child tables.
+  const preserved = await query({ sql: "SELECT * FROM admins ORDER BY id" });
+  const sessions = await query({ sql: "SELECT * FROM admin_sessions ORDER BY token_hash" });
+  const audits = await query({ sql: "SELECT * FROM audit_logs ORDER BY id" });
+  await execute({ sql: await readFile(new URL("../migrations/0006_access_only_admins.sql", import.meta.url), "utf8"), sensitive: true });
+  assert.deepEqual(await query({ sql: "SELECT * FROM admins ORDER BY id" }), preserved);
+  assert.deepEqual(await query({ sql: "SELECT * FROM admin_sessions ORDER BY token_hash" }), sessions);
+  assert.deepEqual(await query({ sql: "SELECT * FROM audit_logs ORDER BY id" }), audits);
+  assert.deepEqual(await query({ sql: "PRAGMA foreign_key_check" }), []);
+  const createArgs = ["--email", " Friend@Example.com ", "--role", "moderator", "--local"];
+  await createAccessAdmin(createArgs, dependencies);
+  assert.equal((await query({ sql: "SELECT count(*) AS n FROM admins" }))[0].n, 2);
+  await createAccessAdmin([...createArgs, "--execute"], dependencies);
+  const friend = (await query({ sql: "SELECT id,role,enabled,github_user_id,username,password_hash FROM admins WHERE access_email_normalized='friend@example.com'" }))[0];
+  assert.equal(friend.role, "moderator"); assert.equal(friend.enabled, 1);
+  assert.equal(friend.github_user_id, null); assert.equal(friend.username, null); assert.equal(friend.password_hash, null);
+  await execute({ sql: "CREATE TRIGGER fail_create_audit BEFORE INSERT ON audit_logs BEGIN SELECT RAISE(ABORT,'AUDIT_UNAVAILABLE'); END;" });
+  await assert.rejects(createAccessAdmin(["--email","rollback@example.com","--local","--execute"], dependencies), /creation failed/);
+  assert.equal((await query({ sql: "SELECT count(*) AS n FROM admins" }))[0].n, 3);
 });

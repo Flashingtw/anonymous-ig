@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="不需登入的匿名投稿頁，投稿將先由管理員審核。" data-copy="publicPage.metaDescription" data-copy-attribute="content">
-    <meta name="theme-color" content="#f4f1ea">
+    <meta name="theme-color" content="#20211f">
     <meta property="og:type" content="website">
     <meta property="og:title" content="匿名投稿" data-copy="social.title" data-copy-attribute="content">
     <meta property="og:description" content="留下想說的話" data-copy="social.description" data-copy-attribute="content">
@@ -17,32 +17,19 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'self'"
     >
-    <title data-copy="publicPage.pageTitle">匿名投稿</title>
+    <title data-copy="publicPage.pageTitle">大安匿名｜DAAN ANONYMOUS</title>
     <link rel="stylesheet" href="./assets/styles.css">
     <script src="./config.js"></script>
     <script src="./assets/app.js" type="module"></script>
   </head>
   <body class="submission-page">
-    <header class="site-header container container--narrow">
-      <a class="brand" href="./" aria-label="匿名投稿首頁" data-copy="publicPage.homeAriaLabel" data-copy-attribute="aria-label">
-        <span class="brand__mark" aria-hidden="true" data-copy="site.brandMark">匿</span>
-        <span data-copy="site.brandName">匿名投稿</span>
-      </a>
-      <span class="eyebrow" data-copy="publicPage.eyebrow">OPEN INBOX</span>
-    </header>
-
-    <main class="container container--narrow">
-      <section class="intro" aria-labelledby="page-title">
-        <p class="kicker" data-copy="publicPage.kicker">匿名・免登入</p>
-        <h1 id="page-title" data-copy="publicPage.title">留下想說的話</h1>
-        <p class="intro__copy" data-copy="publicPage.description">送出後會先審核。</p>
-      </section>
-
+    <a class="skip-link" href="#content">跳至投稿內容</a>
+    <main class="container public-layout">
       <section class="panel submission-panel" aria-labelledby="form-title">
         <div class="panel__heading">
           <div>
             <p class="step-label" data-copy="publicPage.form.stepLabel">01 / WRITE</p>
-            <h2 id="form-title" data-copy="publicPage.form.title">匿名投稿</h2>
+            <h1 id="form-title" data-copy="publicPage.form.title">發送匿名</h1>
           </div>
           <span class="privacy-badge" data-copy="publicPage.form.privacyBadge">匿名</span>
         </div>
@@ -57,7 +44,7 @@
               id="content"
               name="content"
               rows="8"
-              placeholder="在這裡寫下內容⋯"
+              placeholder="想說點甚麼?"
               data-copy="publicPage.form.placeholder"
               data-copy-attribute="placeholder"
               aria-describedby="content-hint content-error"
@@ -76,14 +63,8 @@
         </form>
 
         <div id="submission-status" class="notice" role="status" aria-live="polite" hidden></div>
+        <p class="consent-note" data-copy="publicPage.form.consent">投稿會經人工審核，不會立即公開。</p>
       </section>
-
-      <p class="consent-note" data-copy="publicPage.form.consent">內容可能經整理後公開刊登。</p>
     </main>
-
-    <footer class="site-footer container container--narrow">
-      <span data-copy="site.footerTagline">PRIVATE BY DEFAULT</span>
-      <span data-copy="site.footerCopyright">© 2026 ANONYMOUS INBOX</span>
-    </footer>
   </body>
 </html>

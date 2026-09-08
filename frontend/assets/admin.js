@@ -74,6 +74,13 @@ const refreshButton = document.querySelector("#refresh-button");
 const retryButton = document.querySelector("#retry-button");
 const emptyRefreshButton = document.querySelector("#empty-refresh-button");
 const clearAuthButton = document.querySelector("#clear-auth-button");
+const teamTab = document.querySelector("#team-tab");
+const queueTab = document.querySelector("#queue-tab");
+const teamPanel = document.querySelector("#team-panel");
+const queuePanel = document.querySelector("#queue-panel");
+const teamList = document.querySelector("#team-list");
+const teamStatus = document.querySelector("#team-status");
+let teamRequest = 0;
 
 const sessionAuthPanel = document.querySelector("#session-auth-panel");
 const localAuthForm = document.querySelector("#local-auth-form");
@@ -105,15 +112,22 @@ function setDevAuthBusy(isBusy) {
 function renderIdentity() {
   const identity = adminAuth.identity();
   adminUsername.textContent = formatText(messages.username, {
-    username: identity?.username ?? identity?.githubUsername ?? ""
+    username: identity?.username ?? identity?.githubUsername ?? identity?.accessEmail ?? ""
   });
   adminRole.textContent = formatText(messages.role, {
     role: identity?.role ?? ""
   });
   passwordFormToggle.hidden = !hasLocalIdentity() || adminAuth.mode === "dev";
+  teamTab.hidden = identity?.role !== "owner";
 }
 
 function showAuth(message = "") {
+  teamRequest++;
+  teamList.replaceChildren();
+  teamPanel.hidden = true;
+  queuePanel.hidden = false;
+  teamTab.setAttribute("aria-pressed", "false");
+  queueTab.setAttribute("aria-pressed", "true");
   dashboard.hidden = true;
   authPanel.hidden = false;
   authError.textContent = message;
@@ -128,8 +142,10 @@ function showAuth(message = "") {
   } else if (enabledAuthProviders.local) {
     localPasswordInput.value = "";
     localUsernameInput.focus();
+  } else if (enabledAuthProviders.access) {
+    document.querySelector("#access-sign-in").focus({ preventScroll: true });
   } else if (enabledAuthProviders.github) {
-    githubSignIn.focus();
+    githubSignIn.focus({ preventScroll: true });
   } else {
     authError.focus();
   }
@@ -638,7 +654,49 @@ for (const input of [localUsernameInput, localPasswordInput]) {
   });
 }
 
-refreshButton.addEventListener("click", () => loadSubmissions());
+async function loadTeam() {
+  if (adminAuth.identity()?.role !== "owner") return;
+  const request = ++teamRequest;
+  teamPanel.hidden = false;
+  queuePanel.hidden = true;
+  teamTab.setAttribute("aria-pressed", "true");
+  queueTab.setAttribute("aria-pressed", "false");
+  teamList.replaceChildren();
+  teamStatus.textContent = "正在載入管理員⋯";
+  try {
+    const data = await apiRequest("/api/admin/admins", { headers: adminAuth.requestHeaders() });
+    if (request !== teamRequest) return;
+    for (const admin of data.admins) {
+      const card = document.createElement("article");
+      card.className = "team-member";
+      const name = document.createElement("h3");
+      name.textContent = admin.identity ?? `Admin #${admin.id}`;
+      const email = document.createElement("p");
+      email.textContent = admin.email ?? "尚未綁定 Email";
+      const details = document.createElement("p");
+      details.className = "team-member__meta";
+      const labels = { github: "GitHub", access: "Email OTP", local: "Local（正式停用）" };
+      details.textContent = `#${admin.id} · ${admin.role} · ${admin.enabled ? "啟用" : "停用"} · ${admin.providers.map(p => labels[p] ?? p).join(" / ")}`;
+      card.append(name, email, details);
+      teamList.append(card);
+    }
+    teamStatus.textContent = `${data.admins.length} 位管理員 · 僅供查閱`;
+  } catch (error) {
+    if (request !== teamRequest) return;
+    if (error instanceof ApiClientError && [401, 403].includes(error.status)) { handleAuthFailure(error); return; }
+    teamStatus.textContent = "無法載入管理員。請按重新整理再試。";
+  }
+}
+teamTab.addEventListener("click", loadTeam);
+queueTab.addEventListener("click", () => {
+  teamRequest++;
+  teamPanel.hidden = true;
+  queuePanel.hidden = false;
+  teamTab.setAttribute("aria-pressed", "false");
+  queueTab.setAttribute("aria-pressed", "true");
+  loadSubmissions();
+});
+refreshButton.addEventListener("click", () => teamPanel.hidden ? loadSubmissions() : loadTeam());
 retryButton.addEventListener("click", () => loadSubmissions());
 emptyRefreshButton.addEventListener("click", () => loadSubmissions());
 clearAuthButton.addEventListener("click", async () => {
