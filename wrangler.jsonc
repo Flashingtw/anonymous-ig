@@ -23,6 +23,9 @@
         "not_found_handling": "none"
       },
       "vars": {
+        "ACCESS_AUTH_ENABLED": "false",
+        "ACCESS_TEAM_DOMAIN": "",
+        "ACCESS_POLICY_AUD": "",
         "APP_ENV": "production",
         "ADMIN_AUTH_PROVIDER": "github",
         "ADMIN_AUTH_PROVIDERS": "github,local",

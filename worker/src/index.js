@@ -20,6 +20,7 @@ import {
   logoutHandler
 } from "./handlers/auth.js";
 import { healthHandler } from "./handlers/health.js";
+import { accessLoginHandler } from "./handlers/access-auth.js";
 import {
   authProvidersHandler,
   changePasswordHandler,
@@ -124,6 +125,11 @@ export async function routeApi(request, env, dependencies = {}) {
     }
 
     return githubLoginHandler(request, env);
+  }
+
+  if (pathname === "/api/auth/access") {
+    if (request.method !== "GET") return methodNotAllowed(["GET"]);
+    return accessLoginHandler(request, env, dependencies);
   }
 
   if (pathname === "/api/auth/providers") {

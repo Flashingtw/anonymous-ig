@@ -30,8 +30,8 @@ test("actual Worker runtime supports migrations, PBKDF2 login, password rotation
   const db = await mf.getD1Database("DB");
   async function exec(sql) {
     // D1 exec treats newlines as separate queries. These repository migrations
-    // have no line comments; keep complete statements and trigger bodies intact.
-    await db.exec(sql.replaceAll("\n", " ").replaceAll("\r", " "));
+    // Strip migration line comments before flattening complete statements.
+    await db.exec(sql.replace(/^--.*$/gm, "").replaceAll("\n", " ").replaceAll("\r", " "));
   }
   for (const name of ["0001_create_submissions", "0002_create_admin_auth"]) {
     await exec(await readFile(resolve(root, `migrations/${name}.sql`), "utf8"));
@@ -40,6 +40,8 @@ test("actual Worker runtime supports migrations, PBKDF2 login, password rotation
   await db.prepare("INSERT INTO admin_sessions (token_hash, admin_id, expires_at) VALUES (?, 1, '2099-01-01T00:00:00.000Z')").bind("a".repeat(64)).run();
   await db.prepare("INSERT INTO audit_logs (admin_id, action) VALUES (1, 'login')").run();
   await exec(await readFile(resolve(root, "migrations/0004_add_local_admin_auth.sql"), "utf8"));
+  await exec(await readFile(resolve(root, "migrations/0005_add_access_email.sql"), "utf8"));
+  assert.equal(await db.prepare("SELECT access_email FROM admins WHERE id=1").first("access_email"), null);
   assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM admin_sessions").first("n"), 1);
   assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM audit_logs").first("n"), 1);
   assert.deepEqual((await db.prepare("PRAGMA foreign_key_check").all()).results, []);

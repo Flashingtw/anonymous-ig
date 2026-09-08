@@ -1,5 +1,7 @@
 # Local Account Login 交付報告
 
+> 歷史 Phase 4.5 checkpoint。現行 Phase 4.6 password authentication deferred / disabled due Workers Free runtime constraints。以下不是目前 production 狀態或啟用指示；以 [README](../README.md)、[Access 報告](access-email-otp-integration.md)、[部署狀態快照](deployment-status.md) 為準。保留舊 password，不 rehash／reset／delete。
+
 初版日期：2026-09-07；規則同步：2026-09-08。已完成本機帳密登入實作與驗證，保留 GitHub OAuth；未部署 production、未修改 production D1、未新增公開註冊。延續工作區原本已有的實作，補上 Worker/D1 相容性、安全競態與 Windows CLI 保護。
 
 操作方式以 [README](../README.md) 為入口；線上查詢結果與未驗證項目見 [部署狀態快照](deployment-status.md)。此報告的本機功能驗證不代表已發布，也不代表已建立正式帳號。

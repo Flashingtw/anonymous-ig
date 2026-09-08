@@ -6,6 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { executeSql, runCli } from "../scripts/manage-admin.js";
 import { verifyPassword } from "../worker/src/security/passwords.js";
+import { runCli as bindAccessEmail } from "../scripts/bind-access-email.js";
 
 test("real Wrangler binds in an isolated D1 and rolls back an audit failure", { timeout: 120_000 }, async (t) => {
   const persistence = await mkdtemp(join(tmpdir(), "anonymous-bind-test-"));
@@ -48,4 +49,19 @@ test("real Wrangler binds in an isolated D1 and rolls back an audit failure", { 
   assert.equal(untouched[0].username, null);
   assert.equal(untouched[0].password_hash, null);
   assert.doesNotMatch(messages.join("\n"), /Bind8abc|Other8ab|pbkdf2_sha256/);
+  // Additive Access migration and CLI use the same real D1 file transaction.
+  await execute({ sql: "DROP TRIGGER fail_bind_audit;" });
+  await execute({ sql: await readFile(new URL("../migrations/0005_add_access_email.sql", import.meta.url), "utf8"), sensitive: true });
+  const accessArgs = ["--github-user-id", "101", "--email", " Owner@Example.com ", "--local"];
+  await bindAccessEmail(accessArgs, dependencies);
+  assert.equal((await query({ sql: "SELECT access_email FROM admins WHERE id=7" }))[0].access_email, null);
+  await bindAccessEmail([...accessArgs, "--execute"], dependencies);
+  const bound = await query({ sql: "SELECT id,github_user_id,role,username,password_hash,access_email FROM admins ORDER BY id" });
+  assert.equal(bound.length, 2);
+  assert.deepEqual({ ...bound[0], access_email: undefined }, { ...after[0], access_email: undefined });
+  assert.equal(bound[0].access_email, "owner@example.com");
+  assert.equal((await query({ sql: "SELECT COUNT(*) AS n FROM audit_logs WHERE action='admin_access_email_bound'" }))[0].n, 1);
+  await execute({ sql: "CREATE TRIGGER fail_access_audit BEFORE INSERT ON audit_logs BEGIN SELECT RAISE(ABORT, 'AUDIT_UNAVAILABLE'); END;" });
+  await assert.rejects(bindAccessEmail(["--github-user-id", "202", "--email", "other@example.com", "--local", "--execute"], dependencies), /binding failed/);
+  assert.equal((await query({ sql: "SELECT access_email FROM admins WHERE id=8" }))[0].access_email, null);
 });

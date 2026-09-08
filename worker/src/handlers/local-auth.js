@@ -117,6 +117,7 @@ export async function authProvidersHandler(_request, env) {
       providers: {
         github: isAdminAuthProviderEnabled(env, "github"),
         local: isAdminAuthProviderEnabled(env, "local"),
+        access: isAdminAuthProviderEnabled(env, "access"),
         dev: env.APP_ENV === "development"
           && isAdminAuthProviderEnabled(env, "dev")
       }

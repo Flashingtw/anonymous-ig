@@ -252,6 +252,7 @@ test("auth provider discovery keeps GitHub available while local login has its o
   assert.deepEqual((await enabled.json()).data.providers, {
     github: true,
     local: true,
+    access: false,
     dev: false
   });
 
@@ -263,6 +264,7 @@ test("auth provider discovery keeps GitHub available while local login has its o
   assert.deepEqual((await disabled.json()).data.providers, {
     github: true,
     local: false,
+    access: false,
     dev: false
   });
   const rejectedLogin = await login(disabledEnv);

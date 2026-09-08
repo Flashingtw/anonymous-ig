@@ -7,11 +7,35 @@ import { clearSessionCookie } from "../worker/src/security/cookies.js";
 import { sha256Base64Url } from "../worker/src/security/crypto.js";
 import { runCli } from "../scripts/manage-admin.js";
 import { createTestDatabase } from "./helpers/d1.js";
+import { accessEnv, accessToken, accessJwks } from "./helpers/access.js";
+import { runCli as bindAccessEmail } from "../scripts/bind-access-email.js";
 
 const ORIGIN = "http://127.0.0.1:8787";
 const CALLBACK_URL = `${ORIGIN}/api/auth/github/callback`;
 const SESSION_SECRET = "test-session-secret-with-more-than-thirty-two-characters";
 const MOCK_ACCESS_TOKEN = "github-test-access-token-never-persist";
+
+test("Access binding and GitHub callback share one owner; GitHub is independent of Access configuration", async (t) => {
+  const database = createTestDatabase(); t.after(() => database.close());
+  const env = testEnv(database.DB, { ...accessEnv, ACCESS_AUTH_ENABLED: "true", LOCAL_AUTH_ENABLED: "false" });
+  const adminId = await seedAdmin(database.DB, { role: "owner" });
+  await bindAccessEmail(["--github-user-id", "101", "--email", "owner@example.com", "--local", "--execute"], {
+    query: async ({ sql }) => database.raw.prepare(sql).all(),
+    execute: async ({ sql }) => { database.raw.exec("BEGIN"); try { database.raw.exec(sql); database.raw.exec("COMMIT"); } catch (e) { database.raw.exec("ROLLBACK"); throw e; } },
+    logger: { log() {} }
+  });
+  const access = await handleApiRequest(new Request(`${ORIGIN}/api/auth/access`, { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } }), env, { accessJwks });
+  assert.equal(access.status, 302);
+  for (const overrides of [{ ACCESS_AUTH_ENABLED: "false" }, { ACCESS_TEAM_DOMAIN: "invalid", ACCESS_POLICY_AUD: "" }]) {
+    const github = await completeLogin({ ...env, ...overrides }, { id: 101, login: "original-owner" });
+    assert.equal(new URL(github.response.headers.get("Location")).searchParams.get("auth"), "success");
+  }
+  assert.equal(database.raw.prepare("SELECT COUNT(*) AS n FROM admins").get().n, 1);
+  const sessions = database.raw.prepare("SELECT admin_id FROM admin_sessions").all();
+  assert.equal(sessions.length, 3);
+  assert.ok(sessions.every(session => session.admin_id === adminId));
+  assert.equal(database.raw.prepare("SELECT role FROM admins").get().role, "owner");
+});
 
 test("CLI binding makes GitHub and local login resolve to the same existing owner", async (t) => {
   const database = createTestDatabase();

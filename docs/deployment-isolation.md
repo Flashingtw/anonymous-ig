@@ -1,5 +1,7 @@
 # Local Auth deployment isolation
 
+> Historical Phase 4.5 checkpoint. Current Phase 4.6 candidate: codex/access-email-otp-integration from 9885847. Only Access auth, additive 0005, binding, admin login UI, tests and docs are added; jose is the sole new runtime dependency. Current check:rollout replays the pinned legacy Worker on schema 0005. See [Access integration](access-email-otp-integration.md). Historical results below do not authorize deployment.
+
 ## Fixed scope
 
 Base: `a5888345f8a1658c704237452d58111e4dec3f41` (production main).

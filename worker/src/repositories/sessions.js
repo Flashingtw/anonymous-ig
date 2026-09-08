@@ -23,7 +23,7 @@ function mapAuthenticatedSession(row) {
 export async function createAdminSession(
   db,
   { tokenHash, adminId, expiresAt },
-  { audit = null, replaceTokenHash = null, expectedPasswordHash = null } = {}
+  { audit = null, replaceTokenHash = null, expectedPasswordHash = null, expectedAccessEmail = null } = {}
 ) {
   await db
     .prepare(`
@@ -37,7 +37,9 @@ export async function createAdminSession(
       SELECT ?, id, ? FROM admins
       WHERE id = ? AND enabled = 1
         AND (? IS NULL OR password_hash = ?)
-    `).bind(tokenHash, expiresAt, adminId, expectedPasswordHash, expectedPasswordHash);
+        ${expectedAccessEmail === null ? "" : "AND access_email_normalized = ?"}
+    `).bind(tokenHash, expiresAt, adminId, expectedPasswordHash, expectedPasswordHash,
+      ...(expectedAccessEmail === null ? [] : [expectedAccessEmail]));
 
   const statements = [insertSession];
   if (audit) {

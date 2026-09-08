@@ -5,6 +5,8 @@ const ALLOWED_ACTIONS = new Set([
   "reject_submission",
   "local_login_success",
   "local_login_failed",
+  "access_login_success",
+  "access_login_denied",
   "password_changed",
   "admin_account_created",
   "admin_account_disabled",

@@ -35,13 +35,15 @@ export function getAdminAuthProviders(env) {
     configured
       .split(",")
       .map((provider) => provider.trim().toLowerCase())
-      .filter((provider) => new Set(["github", "local", "dev"]).has(provider))
+      .filter((provider) => new Set(["github", "local", "access", "dev"]).has(provider))
   );
   if (env.LOCAL_AUTH_ENABLED === "true") {
     providers.add("local");
   } else {
     providers.delete("local");
   }
+  if (env.ACCESS_AUTH_ENABLED === "true") providers.add("access");
+  else providers.delete("access");
   return providers;
 }
 
@@ -146,7 +148,7 @@ export async function authenticateAdmin(request, env) {
   if (providers.has("dev")) {
     return authenticateDevAdmin(request, env);
   }
-  if (!providers.has("github") && !providers.has("local")) {
+  if (!providers.has("github") && !providers.has("local") && !providers.has("access")) {
     throw new HttpError(
       503,
       "ADMIN_AUTH_NOT_CONFIGURED",

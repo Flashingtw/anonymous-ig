@@ -32,7 +32,9 @@ test("local env examples share provider, session, and independent login limiter 
   assert.equal(development.APP_ENV, "development");
   assert.equal(development.DEV_ADMIN_MODE, "false");
   assert.equal(development.SESSION_TTL_SECONDS, "28800");
-  assert.deepEqual([...getAdminAuthProviders(development)], ["github", "local"]);
+  assert.deepEqual([...getAdminAuthProviders(development)], ["github"]);
+  assert.equal(development.ACCESS_AUTH_ENABLED, "false");
+  assert.equal(development.LOCAL_AUTH_ENABLED, "false");
   assert.equal(development.RATE_LIMITING_ENABLED, "false");
   assert.deepEqual(loginRateLimitConfig(development), loginRateLimitConfig({}));
 });

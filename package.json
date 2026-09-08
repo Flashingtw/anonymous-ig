@@ -13,6 +13,7 @@
     "bootstrap:owner": "node scripts/bootstrap-owner.js",
     "admin:add-local": "node scripts/manage-admin.js add-local",
     "admin:bind-local": "node scripts/manage-admin.js bind-local",
+    "admin:bind-access-email": "node scripts/bind-access-email.js",
     "admin:list": "node scripts/manage-admin.js list",
     "admin:set-role": "node scripts/manage-admin.js set-role",
     "admin:disable": "node scripts/manage-admin.js disable",
@@ -24,6 +25,9 @@
     "test": "node --test test/*.test.js",
     "test:smoke": "node scripts/smoke-test.mjs",
     "test:smoke:production": "node scripts/smoke-production.js"
+  },
+  "dependencies": {
+    "jose": "6.2.12"
   },
   "devDependencies": {
     "esbuild": "0.28.1",

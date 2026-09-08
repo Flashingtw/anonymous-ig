@@ -27,13 +27,19 @@
     <main class="container admin-main">
       <section id="auth-panel" class="auth-layout" aria-labelledby="auth-title">
         <div class="auth-copy">
-          <p id="auth-kicker" class="kicker" data-copy="admin.auth.kicker">ADMIN ACCESS</p>
-          <h1 id="auth-title" class="admin-auth-title" data-copy="admin.auth.title">進入管理</h1>
-          <p id="auth-description" data-copy="admin.auth.description">使用管理員帳號密碼或 GitHub 登入。</p>
+          <p id="auth-kicker" class="kicker" data-copy="admin.auth.kicker">DAAN ANONYMOUS</p>
+          <h1 id="auth-title" class="admin-auth-title" data-copy="admin.auth.title">大安匿名</h1>
+          <p id="auth-description" data-copy="admin.auth.description">使用 Email 驗證碼或 GitHub 登入。</p>
         </div>
 
         <div class="panel auth-panel">
           <div id="session-auth-panel" class="auth-stack" hidden>
+            <div id="access-auth-panel" hidden>
+              <a id="access-sign-in" class="button button--primary button--wide" href="/api/auth/access">
+                <span data-copy="admin.auth.accessSignInLabel">使用 Email 驗證碼登入</span>
+                <span aria-hidden="true">→</span>
+              </a>
+            </div>
             <form id="local-auth-form" class="auth-form" novalidate hidden>
               <div class="auth-field">
                 <label for="local-username" data-copy="admin.auth.usernameLabel">管理員帳號</label>
@@ -79,6 +85,8 @@
               <p class="field__hint" data-copy="admin.auth.githubHint">只會讀取 GitHub 公開身份。</p>
             </div>
           </div>
+
+          <p class="field__hint" data-copy="admin.auth.accessLogoutHint">Logout 只登出本後台。若 Cloudflare Access 登入仍有效，再按 Email 登入可能不需重新輸入驗證碼。</p>
 
           <form id="admin-auth-form" class="auth-form" novalidate hidden>
             <label for="admin-token" data-copy="admin.auth.credentialLabel">DEV 管理憑證</label>

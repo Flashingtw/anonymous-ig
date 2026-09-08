@@ -1,36 +1,27 @@
 # 部署狀態快照
 
-更新：2026-09-08（Asia/Taipei）。這是帶時間的證據紀錄，不是即時監控。每次部署前先讀 [README](../README.md)，再查 Cloudflare／GitHub 現況。
+更新：2026-09-09（Asia/Taipei）。本輪為 Phase 4.6 本機 code／tests／migration，**未重新查詢或修改 production**。線上資訊引用前序 rollout 紀錄與使用者人工驗證，不是即時監控。部署前先讀 [README](../README.md)，再唯讀查核遠端。
 
-## 已固定的 checkpoints
+## Checkpoints
 
-- Production main 基線：`a5888345f8a1658c704237452d58111e4dec3f41`。
-- Local Auth 初始安全點：`19f18c73ca5e3a4a4831cd045a603b14b0724be4`，101/101；不改寫。
-- Binding final checkpoint：`6a0f985491c64d3366ce8d93706e46ff47cd6efc`，已 push 至 `codex/daan-brand-renderer`。[CI 34221235995](https://github.com/Flashingtw/anonymous-ig/actions/runs/34221235995) success，current 126/126，另驗證 frozen checkpoint。
-- 上述來源 branch 含 renderer／品牌未完成工作，不能整條 merge 或部署。
-- 獨立候選：`codex/local-auth-rollout` 從 production 基線建立；只取 auth／binding／0004／必要 UI、測試與文件。驗證及選取邊界見 [deployment isolation](deployment-isolation.md)。
+- main／Pages 歷史基準：a5888345f8a1658c704237452d58111e4dec3f41。
+- 4.5 初始：19f18c73ca5e3a4a4831cd045a603b14b0724be4；binding 來源：6a0f985491c64d3366ce8d93706e46ff47cd6efc。來源 renderer branch 不能整條合併。
+- 隔離 rollout 基準：98858477827a7076b0e43cde2ed7f9f252fe2076。
+- WIP hasher experiments 留在 codex/local-auth-wip，未移入。
+- VERIFIED PoC 獨立保存：codex/access-email-otp-poc，ca5c4359108777c9fe9246cd6b4061f6d2cddb54。未 merge／deploy production。
+- 本輪 integration：codex/access-email-otp-integration，從乾淨 9885847 建立；變更尚未 commit／push。沒有 renderer／R2／字型／0003／benchmark。
 
-## 最後一次 production 唯讀快照
+## 前序 production 紀錄：本輪未重新驗證
 
-2026-09-08 18:58–18:59（Asia/Taipei）：
+- Worker code 基準 9885847；version b976a804-a000-44bf-b291-9f18e0dbe3dd。
+- D1 anonymous-submissions-production，ID 281ce1f3-dcdb-4d13-a749-709dee63043f；0001／0002／0004 已套用，本輪未套 0005。
+- Owner id=1、GitHub numeric ID=141396710、GitHub username=Flashingtw、role=owner、enabled=1；local username=flashingtw 已綁同一列。不得列印 password_hash。
+- 使用者已人工確認 GitHub login／既有 owner／submissions read／logout／re-login（含 local binding 後）正常。
+- 後續 password login 在 Workers Free 遇到問題，決定 deferred。前序最後已知線上 LOCAL_AUTH_ENABLED=true；**repo false 不代表線上已關閉**。正式 rollout 必須明確批准改為 false，本輪未調整線上 flag。
+- 本輪未建立 production Access application、未 bind production email、未啟用 ACCESS_AUTH_ENABLED。前序 PoC 為獨立 Worker，僅作 PoC evidence。
 
-- [公開 Pages](https://flashingtw.github.io/anonymous-ig/) HTTP 200，config 指向正式 Worker。
-- [正式 /admin/](https://anonymous-submissions-api-production.flashingtw.workers.dev/admin/) HTTP 200，只有 GitHub 登入。
-- /api/health 200；未登入 /api/admin/submissions 401。
-- /api/auth/providers 404；新版帳密登入當時尚未上線。
-- Pages 最近成功發布：[33744006087](https://github.com/Flashingtw/anonymous-ig/actions/runs/33744006087)，使用 a588834。
+## 當前 Gate
 
-這些是歷史觀測，不能證明目前 Worker 版本。Cloudflare CLI 查部署／D1 因缺少可用授權而失敗，因此正式 migration ledger、schema、owner、variables、backup、version ID、CPU 方案尚未確認。
+本機結果見 [Phase 4.6 報告](access-email-otp-integration.md)。Repo defaults：LOCAL_AUTH_ENABLED=false、ACCESS_AUTH_ENABLED=false、DEV_ADMIN_MODE=false、TEAM_DOMAIN／AUD 空值，都是**待批准部署設定**。
 
-## 當前 release gates
-
-- Phase 4.5 功能／binding 已完成並凍結；來源 final checkpoint／CI 已保存。
-- Production isolation：候選已整理；以對應 commit 的本機與 CI 結果簽核。
-- Production migration review：待 Cloudflare 授權、實際 schema、備份與 constraints 核對。
-- Production rollout：尚未開始；未套 production 0004、未部署 Worker／Pages、未建立或綁定正式帳號。
-- Repo production LOCAL_AUTH_ENABLED=false 是待部署設定，不是 Cloudflare 即時讀值。
-- Renderer／R2／字型凍結且不在此候選；Instagram／Meta 尚未串接。
-
-## 下一步
-
-依 README 順序：授權與查核 → 備份／migration review → schema 先上 → 舊 Worker smoke → 新 Worker＋管理 assets（local=false）→ 舊功能 smoke → 同列 owner binding → 確認 id 不變 → 受控啟用 → 帳密與 GitHub 備援測試 → 朋友 moderator。未取得前置資料前不得跳關。
+下一步只能按 README 十個 gates 分別批准。先保存候選 commit／CI、查核正式 ledger／schema／備份／flags，再討論 apply 0005。不得因本機通過就自動 deploy／bind／enable。Pages、production OAuth／secrets、renderer／R2／Instagram 均未修改。

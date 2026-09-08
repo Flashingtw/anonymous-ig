@@ -77,6 +77,7 @@ const clearAuthButton = document.querySelector("#clear-auth-button");
 
 const sessionAuthPanel = document.querySelector("#session-auth-panel");
 const localAuthForm = document.querySelector("#local-auth-form");
+const accessAuthPanel = document.querySelector("#access-auth-panel");
 const localUsernameInput = document.querySelector("#local-username");
 const localPasswordInput = document.querySelector("#local-password");
 const localAuthSubmit = document.querySelector("#local-auth-submit");
@@ -163,7 +164,8 @@ function setPasswordBusy(isBusy) {
 }
 
 function hasLocalIdentity() {
-  return adminAuth.identity()?.authMethods?.includes("local") === true;
+  // Password authentication and its account controls are deferred on Workers Free.
+  return false;
 }
 
 function clearPasswordFields() {
@@ -441,12 +443,14 @@ function configureAuthMode(content, providerData = {}) {
   const isDev = adminAuth.mode === "dev";
   enabledAuthProviders = Object.freeze({
     github: !isDev && providerData.github === true,
-    local: !isDev && providerData.local === true
+    local: false,
+    access: !isDev && providerData.access === true
   });
   sessionAuthPanel.hidden = isDev;
   localAuthForm.hidden = !enabledAuthProviders.local;
+  accessAuthPanel.hidden = !enabledAuthProviders.access;
   githubAuthPanel.hidden = !enabledAuthProviders.github;
-  authDivider.hidden = !(enabledAuthProviders.local && enabledAuthProviders.github);
+  authDivider.hidden = !(enabledAuthProviders.access && enabledAuthProviders.github);
   authForm.hidden = !isDev;
   devBanner.hidden = !isDev;
   githubSignIn.href = adminAuth.signInUrl();
@@ -475,7 +479,7 @@ async function initializeSession(authResult) {
     await loadSubmissions();
   } catch (error) {
     if (error instanceof ApiClientError && error.status === 401) {
-      const noProviderEnabled = !enabledAuthProviders.local && !enabledAuthProviders.github;
+      const noProviderEnabled = !enabledAuthProviders.access && !enabledAuthProviders.github;
       showAuth(authResult === "success"
         ? messages.githubSessionExpired
         : noProviderEnabled
@@ -491,6 +495,7 @@ async function initializeSession(authResult) {
 
 localAuthForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (!enabledAuthProviders.local) return;
   const username = localUsernameInput.value.trim();
   const password = localPasswordInput.value;
   authError.textContent = "";

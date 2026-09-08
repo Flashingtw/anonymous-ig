@@ -22,7 +22,8 @@ for (const path of unchanged) {
   assert.equal(normalized(await readFile(join(root, path), "utf8")), normalized(original(path)), `${path} must remain at production baseline`);
 }
 const migrations = (await readdir(join(root, "migrations"))).filter((name) => !name.startsWith("._")).sort();
-assert.deepEqual(migrations, ["0001_create_submissions.sql", "0002_create_admin_auth.sql", "0004_add_local_admin_auth.sql"]);
+assert.deepEqual(migrations, ["0001_create_submissions.sql", "0002_create_admin_auth.sql", "0004_add_local_admin_auth.sql", "0005_add_access_email.sql"]);
+assert.equal(normalized(await readFile(join(root, "migrations/0004_add_local_admin_auth.sql"), "utf8")), normalized(git("show", "98858477827a7076b0e43cde2ed7f9f252fe2076:migrations/0004_add_local_admin_auth.sql")), "0004 must remain unchanged");
 const paths = git("ls-files", "--cached", "--others", "--exclude-standard").trim().split(/\r?\n/);
 const forbidden = /(?:^|\/)(?:rendering|fonts|render-fixtures)(?:\/|\.)|0003|(?:^|\/)render[^/]*\.(?:js|mjs|json)$/i;
 assert.deepEqual(paths.filter((path) => forbidden.test(path)), [], "no renderer, fonts or rendering schema may ship");
@@ -33,13 +34,14 @@ for (const path of ["worker/src/index.js", "frontend/assets/admin.js", "frontend
 const config = await readFile(join(root, "wrangler.jsonc"), "utf8");
 assert.doesNotMatch(config, /r2_buckets|RENDER/);
 assert.match(config, /"LOCAL_AUTH_ENABLED": "false"/);
+assert.match(config, /"ACCESS_AUTH_ENABLED": "false"/);
 const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
-assert.deepEqual(manifest.dependencies ?? {}, {}, "rollout has no renderer runtime dependencies");
+assert.deepEqual(manifest.dependencies ?? {}, { jose: "6.2.12" }, "only the reviewed JWT dependency may ship");
 assert.doesNotMatch(await readFile(join(root, "package-lock.json"), "utf8"), /@resvg|opentype/);
-console.log("Rollout boundary passed: production public surface retained; only migrations 0001+0002+0004.");
+console.log("Rollout boundary passed: production public surface retained; only migrations 0001+0002+0004+0005.");
 
 // Replay unmodified production tests against unmodified production Worker code,
-// changing only the D1 fixture to apply the candidate's 0004 schema.
+// changing only the D1 fixture to apply the candidate's 0005 schema.
 // CI must fetch history so the pinned baseline is available. No remote calls.
 const temporaryRoot = await mkdtemp(join(tmpdir(), "anonymous-legacy-schema-"));
 try {
@@ -71,12 +73,12 @@ try {
       const payload = await response.json();
       assert.equal(payload.data.submission.status, "pending");
       assert.equal(payload.data.submission.content, undefined);
-      console.log(`${label}: public submission on schema 0004 passed.`);
+      console.log(`${label}: public submission on schema 0005 passed.`);
     } finally {
       database.close();
     }
   }
-  console.log(`Replaying production ${baseline} OAuth, moderation, logout and security tests on schema 0004.`);
+  console.log(`Replaying production ${baseline} OAuth, moderation, logout and security tests on schema 0005.`);
   const result = spawnSync(process.execPath, ["--test", ...testPaths], {
     cwd: temporaryRoot, stdio: "inherit", timeout: 60_000
   });

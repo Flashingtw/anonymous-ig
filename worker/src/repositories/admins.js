@@ -58,6 +58,11 @@ export async function findAdminByGithubUserId(db, githubUserId) {
   return mapAdmin(row);
 }
 
+export async function findAdminByAccessEmail(db, email) {
+  const row = await db.prepare(`SELECT ${ADMIN_COLUMNS} FROM admins WHERE access_email_normalized = ? LIMIT 1`).bind(email).first();
+  return mapAdmin(row);
+}
+
 export async function findAdminByNormalizedUsername(db, normalizedUsername) {
   const row = await db
     .prepare(`
