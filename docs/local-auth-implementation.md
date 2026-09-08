@@ -50,7 +50,7 @@
 
 ## 9–10. CLI 與建立朋友帳號
 
-支援 `admin:add-local`、`admin:list`、`admin:set-role`、`admin:disable`、`admin:enable`、`admin:set-password`。所有 mutation 預設 dry-run，需要 `--execute` 才寫入。帳密只接受 hidden TTY prompt，拒絕 `--password`；不提供公開註冊／找回密碼 API。
+支援 `admin:add-local`、`admin:bind-local`（checkpoint 後新增）、`admin:list`、`admin:set-role`、`admin:disable`、`admin:enable`、`admin:set-password`。所有 mutation 預設 dry-run，需要 `--execute` 才寫入；`bind-local` 的預覽會唯讀解析指定 D1 的既有 admin ID，不詢問密碼。帳密只接受 hidden TTY prompt，拒絕 `--password`；不提供公開註冊／找回密碼 API。
 
 以下指令建立一般 8787 開發環境的 moderator，使用預設 `.wrangler/state/`。這次的 8788 測試服務使用獨立 `tmp/local-auth-ui-state/`，必須使用 README 的隔離測試 helper，不可混用。登入名稱中的 local 指帳密身分；CLI 的 `--local` 才指定本機資料庫。
 
@@ -84,7 +84,7 @@ SQL 會重新檢查 enabled、驗證過的 hash、改密碼所用 session 仍有
 
 GitHub numeric ID、local username 都指向同一個 `admins.id`；兩種登入使用同一張 session table、role、enabled、CSRF、audit 與 middleware。已新增測試證明 dual identity 透過兩個 provider 登入後仍只有一筆 admin row。
 
-`add-local` 建立新 local-only admin，不會自行猜測 GitHub 使用者身分。已是 GitHub admin 的人不要再建立第二列；模型支援同列綁定，但本階段無 account-linking UI。
+`add-local` 建立新 local-only admin，不會自行猜測 GitHub 使用者身分。已是 GitHub admin 的人不要再建立第二列，使用 checkpoint 後新增的 `admin:bind-local`：以明確 numeric GitHub ID 解析唯一 enabled 管理員、顯示實際 admin ID、確認 username 未被占用且目標未有 local identity，再於原列寫入帳密，保持 id／GitHub identity／角色不變。成功寫入 `admin_local_identity_bound` audit 並撤銷該 admin 舊 sessions；失敗回滾。沒有公開 account-linking UI。指令、預覽及拒絕條件見 [README](../README.md)。
 
 ## 14. 驗證結果
 
@@ -92,12 +92,13 @@ GitHub numeric ID、local username 都指向同一個 `admins.id`；兩種登入
 
 | 檢查 | 結果 |
 | --- | --- |
-| `npm run check` | 2026-09-08：通過，65 個 JS/MJS + content JSON |
-| `npm test` | 2026-09-08：101/101 通過，無 skip（含 7 字元拒絕、8 字元建立／登入／改密碼，以及 3 項文件／設定一致性測試） |
-| `npm audit --audit-level=low` | 2026-09-07：0 vulnerabilities，非即時依賴安全保證 |
+| `npm run check` | 2026-09-08 binding CLI 更新後：通過，67 個 JS/MJS + content JSON |
+| `npm test` | 2026-09-08 binding CLI 更新後：126/126 通過，無 skip；凍結 checkpoint 仍是 101/101 |
+| `npm audit --audit-level=low` | 2026-09-08：0 vulnerabilities，非未來依賴安全保證 |
 | `npm run build` | 2026-09-08：production configuration dry-run 成功，沒有部署 |
 | 實際 workerd / D1 | PBKDF2、migrations、登入、改密碼、CLI SQL、併發限流通過 |
 | Wrangler local migrations | 獨立測試資料目錄 0001–0004 全部成功 |
+| 真實 Wrangler binding | 在獨立暫存 D1 套用 0001＋0002＋0004，唯讀預覽／原列綁定通過，audit 失敗確認 transaction 回滾；無 renderer 依賴 |
 | 390px UI | 視覺正常，無水平溢出，Enter 錯誤提示、autocomplete、label 正常 |
 | 既有功能回歸 | OAuth、approve/reject、submission validation、Pages artifact/workflow、render API/layout/storage 測試通過 |
 

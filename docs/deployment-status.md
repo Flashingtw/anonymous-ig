@@ -48,3 +48,21 @@ Cloudflare CLI 的 `deployments list --env production` 與 `d1 migrations list D
 - 已 push 到 `origin/codex/daan-brand-renderer`，包含固定 checkpoint `19f18c73ca5e3a4a4831cd045a603b14b0724be4` 與 CI／文件提交 `14ab084e3f02f870bd61917eb4e3018d45a02eb3`。
 - [CI run 34219509338](https://github.com/Flashingtw/anonymous-ig/actions/runs/34219509338) 成功：`Validate frozen-4.5` 與 `Validate current` 各自執行 `npm ci`、`check`、`test`、`build`、`audit`。兩組皆 65 個 JS 檢查通過、101/101 tests、Worker dry-run 成功、audit 0 vulnerabilities。固定 checkpoint 是獨立 checkout 驗證，不只是測試其後續版本。
 - 遠端 `main` 仍為 `a5888345f8a1658c704237452d58111e4dec3f41`；Pages 最近部署仍為 [run 33744006087](https://github.com/Flashingtw/anonymous-ig/actions/runs/33744006087)，這次沒有觸發部署。4.5 本機階段正式完成並已保存遠端 checkpoint；production rollout 尚未開始。
+
+## Existing-owner binding CLI（2026-09-08，checkpoint 後續功能）
+
+以下更新取代上方歷史紀錄中「現有 CLI 沒有綁定指令」的現況描述，不改寫 `19f18c7` checkpoint：
+
+| 階段 | 目前狀態 |
+| --- | --- |
+| Phase 4.5 implementation | 完成並凍結 |
+| Phase 4.5 checkpoint / CI | 已保存，遠端 101/101 通過 |
+| Production migration review | 待 Cloudflare 授權與正式 schema／備份確認 |
+| Existing-owner local binding CLI | 本機實作與驗證完成；尚未對正式 owner 執行 |
+| Production rollout | 尚未開始 |
+
+- 新增 `npm run admin:bind-local -- --github-user-id NUMERIC_ID --username LOCAL_USERNAME --local`，預設唯讀查詢並顯示實際 admin ID；`--execute` 才讀取 hidden password 並寫入。正式目標使用 `--remote`，但此次未執行。
+- 拒絕不存在／多筆匹配、停用帳號、username 衝突、已具 local identity、密碼不符規則及預覽後目標變更。保留原本 `admins.id`、GitHub identity、角色與 enabled，不新增管理員。
+- 綁定、`admin_local_identity_bound` audit 與該 admin 舊 session 撤銷在同一 transaction 完成；錯誤回滾。成功不會打開 local auth，正式登入驗證仍須等受控啟用。
+- 本機 126/126 tests、67 個 JS source check、Worker dry-run build 通過，audit 0 vulnerabilities。包含 CLI 綁定後 GitHub OAuth（外部交換 mock）與帳密登入解析至同一 owner，以及真實 Wrangler／隔離 D1 的綁定與 audit 失敗回滾。
+- 本輪 binding 變更尚未 commit／push，未宣稱其遠端 CI 已通過。尚未修改任何 production 資料或設定；renderer、字型、R2 與 migration SQL 維持凍結。

@@ -20,6 +20,7 @@ import {
 const ROLES = new Set(["owner", "admin", "moderator"]);
 export const usage = `Usage:
   node scripts/manage-admin.js add-local --username USERNAME [--role ROLE] (--local | --remote) [--execute]
+  node scripts/manage-admin.js bind-local --github-user-id NUMERIC_ID --username USERNAME (--local | --remote) [--execute]
   node scripts/manage-admin.js list (--local | --remote)
   node scripts/manage-admin.js set-role --username USERNAME --role ROLE (--local | --remote) [--execute]
   node scripts/manage-admin.js disable --username USERNAME (--local | --remote) [--execute]
@@ -28,11 +29,13 @@ export const usage = `Usage:
 
 ROLE is owner, admin, or moderator. Mutations are previews unless --execute is present.
 add-local defaults to moderator. --local and --remote select separate databases.
+bind-local reads the existing GitHub admin in preview mode; it never creates an admin or changes a role.
 Passwords must contain ${PASSWORD_MIN_GRAPHEMES}–${PASSWORD_MAX_GRAPHEMES} graphemes, at most 1024 UTF-8 bytes, and cannot be all whitespace.
 Passwords are accepted only through a hidden TTY prompt; --password is never accepted.`;
 
 const COMMAND_OPTIONS = Object.freeze({
   "add-local": new Set(["--username", "--role", "--local", "--remote", "--execute"]),
+  "bind-local": new Set(["--github-user-id", "--username", "--local", "--remote", "--execute"]),
   list: new Set(["--local", "--remote"]),
   "set-role": new Set(["--username", "--role", "--local", "--remote", "--execute"]),
   disable: new Set(["--username", "--local", "--remote", "--execute"]),
@@ -65,7 +68,8 @@ export function parseArguments(argv) {
     role: command === "add-local" ? "moderator" : null,
     target: null,
     username: null,
-    usernameNormalized: null
+    usernameNormalized: null,
+    ...(command === "bind-local" ? { githubUserId: null } : {})
   };
   const seen = new Set();
 
@@ -103,6 +107,11 @@ export function parseArguments(argv) {
       const normalized = normalizeUsername(value);
       parsed.username = normalized.username;
       parsed.usernameNormalized = normalized.normalized;
+    } else if (argument === "--github-user-id") {
+      if (!/^[0-9]{1,32}$/.test(value)) {
+        throw new Error("--github-user-id must contain 1-32 digits.");
+      }
+      parsed.githubUserId = value;
     } else if (argument === "--role") {
       if (!ROLES.has(value)) {
         throw new Error("--role must be owner, admin, or moderator.");
@@ -120,6 +129,9 @@ export function parseArguments(argv) {
   if (command === "set-role" && parsed.role === null) {
     throw new Error("--role is required.");
   }
+  if (command === "bind-local" && parsed.githubUserId === null) {
+    throw new Error("--github-user-id is required.");
+  }
 
   return Object.freeze(parsed);
 }
@@ -132,6 +144,37 @@ export function sqlLiteral(value) {
 }
 
 const nowSql = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
+
+export function bindingTargetSql(options) {
+  // Return only identity metadata; never retrieve an existing password hash.
+  return `SELECT id, github_user_id, role, enabled, username_normalized,
+  CASE WHEN username IS NOT NULL OR username_normalized IS NOT NULL
+    OR password_hash IS NOT NULL OR password_updated_at IS NOT NULL
+    THEN 1 ELSE 0 END AS has_local_identity
+FROM admins
+WHERE github_user_id = ${sqlLiteral(options.githubUserId)}
+   OR username_normalized = ${sqlLiteral(options.usernameNormalized)};`;
+}
+
+function bindingTarget(options, rows) {
+  if (!Array.isArray(rows)) throw new Error("Unable to read the binding target.");
+  const matches = rows.filter((row) => row.github_user_id === options.githubUserId);
+  if (matches.length !== 1) {
+    throw new Error("Binding requires exactly one matching GitHub admin. Check --github-user-id and target.");
+  }
+  const admin = matches[0];
+  if (!Number.isSafeInteger(admin.id) || admin.id <= 0 || !ROLES.has(admin.role)) {
+    throw new Error("Invalid binding target metadata; refusing to continue.");
+  }
+  if (admin.enabled !== 1) throw new Error("Cannot bind a disabled admin.");
+  if (admin.has_local_identity !== 0) {
+    throw new Error("Admin already has a local identity. Use set-password to reset it; binding will not overwrite it.");
+  }
+  if (rows.some((row) => row.id !== admin.id && row.username_normalized === options.usernameNormalized)) {
+    throw new Error("Username is already used by another admin.");
+  }
+  return Object.freeze({ id: admin.id, role: admin.role });
+}
 
 export function listSql() {
   return `SELECT
@@ -170,9 +213,36 @@ function targetAssertionSql() {
   ELSE json('MANAGE_ADMIN_TARGET_NOT_FOUND') END;`;
 }
 
-export function mutationSql(options, { passwordHash } = {}) {
+export function mutationSql(options, { passwordHash, binding } = {}) {
   const username = sqlLiteral(options.username);
   const normalized = sqlLiteral(options.usernameNormalized);
+
+  if (options.command === "bind-local") {
+    if (typeof passwordHash !== "string" || !Number.isSafeInteger(binding?.id)
+      || binding.id <= 0 || !ROLES.has(binding.role)) {
+      throw new TypeError("bind-local requires a password hash and a resolved admin target.");
+    }
+    const githubId = sqlLiteral(options.githubUserId);
+    // Recheck every precondition at the write boundary. A preview does not
+    // authorize binding a different/replaced row or overwriting new credentials.
+    return `UPDATE admins
+SET username = ${username}, username_normalized = ${normalized},
+    password_hash = ${sqlLiteral(passwordHash)}, password_updated_at = ${nowSql},
+    updated_at = ${nowSql}
+WHERE id = ${binding.id} AND github_user_id = ${githubId}
+  AND role = ${sqlLiteral(binding.role)} AND enabled = 1
+  AND username IS NULL AND username_normalized IS NULL
+  AND password_hash IS NULL AND password_updated_at IS NULL
+  AND (SELECT COUNT(*) FROM admins WHERE github_user_id = ${githubId}) = 1
+  AND NOT EXISTS (SELECT 1 FROM admins WHERE username_normalized = ${normalized});
+SELECT CASE WHEN changes() = 1 THEN 1
+  ELSE json('BIND_LOCAL_TARGET_CHANGED') END;
+${changedAdminAuditSql({
+    action: "admin_local_identity_bound",
+    usernameNormalized: options.usernameNormalized
+  })}
+DELETE FROM admin_sessions WHERE admin_id = ${binding.id};`;
+  }
 
   if (options.command === "add-local") {
     if (typeof passwordHash !== "string") {
@@ -334,7 +404,8 @@ export async function executeSql({
   target,
   sql,
   sensitive = false,
-  sensitiveValues = []
+  sensitiveValues = [],
+  json = false
 }, {
   spawn = spawnSync,
   stdout = process.stdout,
@@ -343,7 +414,7 @@ export async function executeSql({
 } = {}) {
   const invoke = (argumentsList, logDirectory) => {
     const wrangler = fileURLToPath(new URL("../node_modules/wrangler/bin/wrangler.js", import.meta.url));
-    const result = spawn(process.execPath, [wrangler, ...argumentsList], {
+    const result = spawn(process.execPath, [wrangler, ...argumentsList, ...(json ? ["--json"] : [])], {
       cwd: fileURLToPath(new URL("..", import.meta.url)),
       encoding: "utf8",
       windowsHide: true,
@@ -357,11 +428,15 @@ export async function executeSql({
     });
     const safeStdout = redact(result.stdout, sensitiveValues);
     const safeStderr = redact(result.stderr, sensitiveValues);
-    if (safeStdout) stdout.write(safeStdout);
+    if (safeStdout && !json) stdout.write(safeStdout);
     if (safeStderr) stderr.write(safeStderr);
     if (result.error) throw result.error;
     if (result.status !== 0) {
       const combined = `${safeStdout}\n${safeStderr}`;
+      if (combined.includes("BIND_LOCAL_TARGET_CHANGED")
+        || (sql.includes("BIND_LOCAL_TARGET_CHANGED") && /malformed JSON/i.test(combined))) {
+        throw new Error("Binding refused: target or username changed after preview. Re-run the dry-run; no credentials were overwritten.");
+      }
       if (combined.includes("LAST_ENABLED_OWNER")) {
         throw new Error(
           "Operation refused: the database must keep at least one enabled owner. "
@@ -375,6 +450,19 @@ export async function executeSql({
         );
       }
       throw new Error(`Wrangler exited with status ${result.status ?? "unknown"}.`);
+    }
+    if (json) {
+      let payload;
+      try {
+        payload = JSON.parse(result.stdout);
+      } catch {
+        throw new Error("Unable to parse Wrangler query results; no binding performed.");
+      }
+      if (!Array.isArray(payload) || payload.length !== 1
+        || payload[0].success !== true || !Array.isArray(payload[0].results)) {
+        throw new Error("Unexpected Wrangler query results; no binding performed.");
+      }
+      return payload[0].results;
     }
   };
 
@@ -446,6 +534,9 @@ export async function readConfirmedPassword({ prompt = promptHidden } = {}) {
 }
 
 function previewDescription(options) {
+  if (options.command === "bind-local") {
+    return `bind local username ${options.username} to GitHub ID ${options.githubUserId}`;
+  }
   if (options.command === "add-local") {
     return `add local admin ${options.username} with role ${options.role}`;
   }
@@ -460,6 +551,7 @@ function previewDescription(options) {
 
 export async function runCli(argv, {
   execute = executeSql,
+  query = (request) => executeSql({ ...request, json: true }),
   passwordReader = readConfirmedPassword,
   passwordHasher = hashPassword,
   logger = console
@@ -473,6 +565,14 @@ export async function runCli(argv, {
 
   logger.log(`Target: ${options.target}`);
   logger.log(`Plan: ${previewDescription(options)}`);
+  let binding;
+  if (options.command === "bind-local") {
+    binding = bindingTarget(options, await query({
+      target: options.target, sql: bindingTargetSql(options), sensitive: false
+    }));
+    logger.log(`Will bind to admin id ${binding.id} (role ${binding.role}, unchanged). No new admin row.`);
+    logger.log("Existing sessions for this admin will be revoked; GitHub sign-in remains available.");
+  }
   if (!options.execute) {
     logger.log("Preview only. Add --execute to apply this change.");
     return;
@@ -480,7 +580,7 @@ export async function runCli(argv, {
 
   let passwordHash;
   let sensitiveValues = [];
-  if (options.command === "add-local" || options.command === "set-password") {
+  if (["add-local", "set-password", "bind-local"].includes(options.command)) {
     const password = await passwordReader();
     assertPasswordPolicy(password);
     passwordHash = await passwordHasher(password);
@@ -489,7 +589,7 @@ export async function runCli(argv, {
 
   await execute({
     target: options.target,
-    sql: mutationSql(options, { passwordHash }),
+    sql: mutationSql(options, { passwordHash, binding }),
     sensitive: passwordHash !== undefined,
     sensitiveValues
   });

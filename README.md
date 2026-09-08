@@ -292,6 +292,32 @@ npm run admin:set-password -- --username friend01 --local --execute
 
 所有 mutation 預設都是 dry-run，必須明確加 `--execute`；`list` 只顯示 id、local username、GitHub display username、role、enabled、auth methods 與建立時間，不查詢或顯示 password hash。設定／重設密碼也會撤銷該帳號全部既有 sessions。
 
+### 綁定既有 GitHub 管理員（admin:bind-local）
+
+4.5 checkpoint 之後新增的 rollout 工具；只更新既有管理員的 local identity，不新增 `admins` row，不改 `id`、`github_user_id`、GitHub 顯示名稱、role 或 enabled。自己已有 GitHub owner 時使用這個指令；朋友的新帳號才使用 `admin:add-local`。
+
+本機 8787 先預覽，再執行（將 `12345678` 換成確實存在的 numeric GitHub ID；以下單行指令也適用 PowerShell）：
+
+```powershell
+npm run admin:bind-local -- --github-user-id 12345678 --username my.owner --local
+npm run admin:bind-local -- --github-user-id 12345678 --username my.owner --local --execute
+```
+
+正式環境用法如下，**僅供經授權的 rollout，這次沒有執行**：
+
+```powershell
+npm run admin:bind-local -- --github-user-id 12345678 --username my.owner --remote
+npm run admin:bind-local -- --github-user-id 12345678 --username my.owner --remote --execute
+```
+
+- 與 `add-local` 的純文字預覽不同，`bind-local` 的 dry-run 會唯讀查詢指定 D1，所以需要已套用 `0004` 且具備該環境查詢權限。它不詢問密碼、不寫入 DB，顯示 `Target: remote`／`local` 及 `Will bind to admin id X (role owner, unchanged). No new admin row.`；先核對 ID 與角色，不正確就停止。
+- `--execute` 仍會先查詢並顯示目標 ID，再透過 hidden TTY 輸入／確認 8–128 字元密碼。拒絕 `--password`、`--role`、不存在或多筆 GitHub identity、disabled admin、username 衝突，以及已具 local identity 的目標。
+- 寫入當下再次檢查預覽的 admin ID、GitHub ID、角色、enabled、尚未綁定與 username 未被使用，避免預覽後的競態。不覆寫現有帳密；重設已綁帳號請用 `admin:set-password`，改綁 username 不屬此指令範圍。
+- 沿用 PBKDF2 abstraction、私有暫存 SQL 與日誌；同一個 D1 transaction 內更新帳密、寫入 `admin_local_identity_bound` audit、撤銷該 admin 的全部 sessions。audit actor 為 NULL，metadata 包含 CLI source 與 target admin ID，不存明文密碼／hash。失敗回滾，其他管理員不受影響。
+- 成功不會啟用 `LOCAL_AUTH_ENABLED`。開關仍為 false 時只能確認 CLI 綁定結果與 GitHub 備援，不能宣稱已完成正式帳密登入；正式帳密端到端驗證要等受控啟用後進行。
+
+此指令使用標準 `.wrangler/state/` 或 production D1；不搭配 gitignored 的 8788 helper，避免查詢與寫入落在不同測試庫。
+
 CLI 在 Windows 直接以 Node 啟動已安裝的 Wrangler，避免 `.cmd` shell 相容性與字串插值問題。含 hash 的 SQL 與 Wrangler 日誌放在同一個私人暫存目錄，完成或失敗後一起刪除；Unix 使用 `0700/0600`，Windows 使用僅目前帳號與 SYSTEM 可存取的 ACL，無法套用 ACL 時停止。不要在不支援 ACL 的 Windows 暫存磁碟執行密碼管理；主機管理員仍屬受信任邊界。
 
 API 錯誤保留既有 `{ ok: false, error: { code, message } }` 格式。無效帳密一律使用 `INVALID_CREDENTIALS`，限流使用 `TOO_MANY_ATTEMPTS`，不增加第二套前端錯誤格式。
@@ -306,7 +332,7 @@ Production 仍維持 `LOCAL_AUTH_ENABLED=false`。發布前先備份並核對實
 
 另外需確認 Worker 的 CPU 預算：本機 workerd 成功不等於 production plan 足夠。PBKDF2 與改密碼需要密集計算；上線前應依實際方案與當時的 [Workers limits](https://developers.cloudflare.com/workers/platform/limits/) 驗證 CPU 指標，不應為了遷就方案降低 KDF 強度。完整交付說明見 [Local Account Login 實作報告](docs/local-auth-implementation.md)。
 
-未來部署經人工確認後，可把上例的 `--local` 換成 `--remote`；remote 固定使用 production D1 binding 與 `--env production`。**本階段不要執行 remote mutation。** `add-local` 只建立全新的 local-only row；若某人已經是 GitHub admin，不要再替同一人執行 `add-local`。Schema 已支援在同一筆 `admins.id` 同時保留 GitHub 與 local identity，但 account linking 流程不在本階段範圍。
+未來部署經人工確認後，可把上例的 `--local` 換成 `--remote`；remote 固定使用 production D1 binding 與 `--env production`。**本階段不要執行 remote mutation。** `add-local` 只建立全新的 local-only row；若某人已經是 GitHub admin，應使用 `admin:bind-local` 綁定同一筆 `admins.id`，不要再建立第二列。沒有公開 account-linking UI／API。
 
 ## API
 
@@ -598,12 +624,12 @@ Script 只做：
 1. 確認 release 範圍、source check、tests 與 dry-run；產圖未完成時不得宣稱此 release 已提供產圖。`npm run build` 不會上線。
 2. 取得 Cloudflare 授權，唯讀核對部署版本、secret 名稱、D1 目標與 pending migrations，備份並準備恢復方式。缺少授權就停止正式操作，不建立替代資源。
 3. 經明確批准後，按依賴順序套用必要 schema，再部署 Worker 程式；初次上新版保持 `LOCAL_AUTH_ENABLED=false`，驗證 health 與 GitHub OAuth。
-4. 經帳號／角色確認後，用標準 CLI 的 `--remote --execute` 與隱藏提示建立正式 local admin；不可把本機 DB、測試 secret 或 `tmp/` 搬上線。
+4. 經 GitHub numeric ID、admin ID／角色確認後，用 `admin:bind-local` 先 `--remote` dry-run，再 `--remote --execute` 綁定既有 owner；不可把本機 DB、測試 secret 或 `tmp/` 搬上線，不另外新增第二個 owner。
 5. 確認 CPU 預算後，在受控發布步驟將 `LOCAL_AUTH_ENABLED=true` 並部署，才測試正式帳密登入、錯誤限流、改密碼與登出；開關關閉時不能完成帳密登入驗證。異常時關回 `false` 並部署，保留 GitHub OAuth；不要直接回滾或刪除正式 schema。
 6. Worker API 驗證完成後，才將已審查的 release 合併／push 到 `main` 觸發 Pages。GitHub Actions 只部署 Pages，不會部署 Worker、套用 D1 或建立帳號；不得先發布依賴新版 API 的前端。
 7. 核對 Pages workflow、公開頁、Worker `/admin/` 與授權的端到端測試，更新 [部署狀態快照](docs/deployment-status.md)，記錄實際版本、時間與未驗證項目。
 
-不可把上述順序改成「先部署新版、再套 schema」：GitHub admin／session 查詢即使在 `LOCAL_AUTH_ENABLED=false` 仍會讀取 `0004` 新增欄位。若自己已有 GitHub owner，應在經確認的同一筆 `admins.id` 上綁定 local identity；目前 `add-local` 只新增資料，`set-password` 只重設既有 local identity，兩者都不是 GitHub 帳號綁定工具。尚未提供安全的 owner 綁定操作流程，必須在啟用前另行核准準備，不用建立第二筆 owner 代替。朋友的 moderator 於 owner 雙登入驗證成功後才建立。
+不可把上述順序改成「先部署新版、再套 schema」：GitHub admin／session 查詢即使在 `LOCAL_AUTH_ENABLED=false` 仍會讀取 `0004` 新增欄位。`bind-local` 綁定既有 GitHub row，`add-local` 新增 row，`set-password` 重設已綁帳密，三者不可混用。朋友的 moderator 於 owner 雙登入驗證成功後才建立。
 
 `.github/workflows/validate.yml` 在 `codex/**` push／對 `main` 的 PR 執行純驗證，分別 checkout 固定 4.5 checkpoint 與當次版本，執行 `check`、`test`、Worker dry-run build、audit。它只有 `contents: read`、不使用 production secrets，不部署 Pages／Worker、不執行 remote migrations。Pages 仍只由原本的部署 workflow 發布；保存 checkpoint 時不要 push `main`。
 

@@ -5,7 +5,7 @@ import { handleApiRequest } from "../worker/src/index.js";
 import { updatePendingSubmissionStatusWithAudit } from "../worker/src/repositories/submissions.js";
 import { clearSessionCookie } from "../worker/src/security/cookies.js";
 import { sha256Base64Url } from "../worker/src/security/crypto.js";
-import { hashPassword } from "../worker/src/security/passwords.js";
+import { runCli } from "../scripts/manage-admin.js";
 import { createTestDatabase } from "./helpers/d1.js";
 
 const ORIGIN = "http://127.0.0.1:8787";
@@ -13,15 +13,18 @@ const CALLBACK_URL = `${ORIGIN}/api/auth/github/callback`;
 const SESSION_SECRET = "test-session-secret-with-more-than-thirty-two-characters";
 const MOCK_ACCESS_TOKEN = "github-test-access-token-never-persist";
 
-test("GitHub and local login resolve a dual identity to the same admin and session table", async (t) => {
+test("CLI binding makes GitHub and local login resolve to the same existing owner", async (t) => {
   const database = createTestDatabase();
   t.after(() => database.close());
   const env = testEnv(database.DB, { ADMIN_AUTH_PROVIDERS: "github,local", LOCAL_AUTH_ENABLED: "true" });
-  const adminId = await seedAdmin(database.DB);
+  const adminId = await seedAdmin(database.DB, { role: "owner" });
   const password = "dual identity test passphrase";
-  database.raw.prepare(`UPDATE admins SET username = 'Dual.User', username_normalized = 'dual.user',
-    password_hash = ?, password_updated_at = '2026-01-01T00:00:00.000Z' WHERE id = ?`)
-    .run(await hashPassword(password), adminId);
+  await runCli(["bind-local", "--github-user-id", "101", "--username", "Dual.User", "--local", "--execute"], {
+    query: async ({ sql }) => database.raw.prepare(sql).all(),
+    execute: async ({ sql }) => database.raw.exec(sql),
+    passwordReader: async () => password,
+    logger: { log() {} }
+  });
   const github = await completeLogin(env, { id: 101, login: "renamed-on-github" });
   assert.equal(new URL(github.response.headers.get("Location")).searchParams.get("auth"), "success");
   const local = await handleApiRequest(new Request(`${ORIGIN}/api/auth/login`, {
@@ -32,6 +35,7 @@ test("GitHub and local login resolve a dual identity to the same admin and sessi
   const data = (await local.json()).data;
   assert.deepEqual(data.user.authMethods, ["github", "local"]);
   assert.equal(data.user.githubUsername, "renamed-on-github");
+  assert.equal(data.user.role, "owner");
   assert.equal(database.raw.prepare("SELECT COUNT(*) AS n FROM admins").get().n, 1);
   const sessions = database.raw.prepare("SELECT admin_id FROM admin_sessions").all();
   assert.equal(sessions.length, 2);
