@@ -42,3 +42,9 @@ Cloudflare CLI 的 `deployments list --env production` 與 `d1 migrations list D
 - 在同一探針直接套 `0004`（跳過 `0003`）成功，既有 owner、session、audit 與 foreign keys 保留；沒有 R2、renderer 或字型依賴。這不代表已對正式 D1 驗證；完整工作區的投稿查詢仍需要 `0003` 欄位。
 - 自己的 local owner 應綁定既有 GitHub owner 的同一筆 identity。現有 CLI 沒有綁定指令，不能用 `add-local` 建立第二筆 owner 充當綁定；這是正式啟用前的待辦，不是 4.5 功能需求變更。
 - 尚未部署 Worker／Pages、套用 production migration、建立正式 owner 或朋友帳號。正式 rollout 仍受 Cloudflare 授權、schema／備份確認及 owner 綁定流程限制。
+
+### Checkpoint 遠端確認（2026-09-08 19:13–19:15，Asia/Taipei）
+
+- 已 push 到 `origin/codex/daan-brand-renderer`，包含固定 checkpoint `19f18c73ca5e3a4a4831cd045a603b14b0724be4` 與 CI／文件提交 `14ab084e3f02f870bd61917eb4e3018d45a02eb3`。
+- [CI run 34219509338](https://github.com/Flashingtw/anonymous-ig/actions/runs/34219509338) 成功：`Validate frozen-4.5` 與 `Validate current` 各自執行 `npm ci`、`check`、`test`、`build`、`audit`。兩組皆 65 個 JS 檢查通過、101/101 tests、Worker dry-run 成功、audit 0 vulnerabilities。固定 checkpoint 是獨立 checkout 驗證，不只是測試其後續版本。
+- 遠端 `main` 仍為 `a5888345f8a1658c704237452d58111e4dec3f41`；Pages 最近部署仍為 [run 33744006087](https://github.com/Flashingtw/anonymous-ig/actions/runs/33744006087)，這次沒有觸發部署。4.5 本機階段正式完成並已保存遠端 checkpoint；production rollout 尚未開始。
