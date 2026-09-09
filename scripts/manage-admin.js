@@ -400,6 +400,24 @@ function redact(value, secrets) {
   return safeValue;
 }
 
+// Row queries accept exactly one successful statement envelope from
+// --command --json. Never scrape JSON out of terminal/progress output.
+export function normalizeWranglerD1Rows(output) {
+  let payload;
+  try {
+    if (typeof output !== "string") throw new TypeError();
+    payload = JSON.parse(output);
+  } catch {
+    throw new Error("Unable to parse Wrangler query results; no binding performed.");
+  }
+  if (!Array.isArray(payload) || payload.length !== 1
+    || payload[0]?.success !== true || !Array.isArray(payload[0]?.results)
+    || Object.hasOwn(payload[0], "finalBookmark")) {
+    throw new Error("Unexpected Wrangler query results; expected one successful statement.");
+  }
+  return payload[0].results;
+}
+
 export async function executeSql({
   target,
   sql,
@@ -412,6 +430,9 @@ export async function executeSql({
   stderr = process.stderr,
   sensitiveFile = withSensitiveSqlFile
 } = {}) {
+  if (json && sensitive) {
+    throw new Error("JSON row queries cannot use the sensitive file-import path. Never pass credentials via --command.");
+  }
   const invoke = (argumentsList, logDirectory) => {
     const wrangler = fileURLToPath(new URL("../node_modules/wrangler/bin/wrangler.js", import.meta.url));
     const result = spawn(process.execPath, [wrangler, ...argumentsList, ...(json ? ["--json"] : [])], {
@@ -452,17 +473,7 @@ export async function executeSql({
       throw new Error(`Wrangler exited with status ${result.status ?? "unknown"}.`);
     }
     if (json) {
-      let payload;
-      try {
-        payload = JSON.parse(result.stdout);
-      } catch {
-        throw new Error("Unable to parse Wrangler query results; no binding performed.");
-      }
-      if (!Array.isArray(payload) || payload.length !== 1
-        || payload[0].success !== true || !Array.isArray(payload[0].results)) {
-        throw new Error("Unexpected Wrangler query results; no binding performed.");
-      }
-      return payload[0].results;
+      return normalizeWranglerD1Rows(result.stdout);
     }
   };
 

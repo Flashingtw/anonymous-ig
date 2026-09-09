@@ -32,10 +32,14 @@ export async function runCli(argv,{
   logger=console
 }={}) {
   const options=parseArguments(argv);
-  const rows=await query({target:options.target,sql:`SELECT id FROM admins WHERE access_email_normalized=${sqlLiteral(options.email)};`,sensitive:true,sensitiveValues:[options.email]});
+  // This lookup contains an email, never credentials. Remote --file performs
+  // an import and returns metrics, not SELECT rows; use --command --json.
+  // Keep the actual mutation below on the protected, atomic file path.
+  const rows=await query({target:options.target,sql:`SELECT id FROM admins WHERE access_email_normalized=${sqlLiteral(options.email)};`,sensitive:false,sensitiveValues:[options.email]});
   if(!Array.isArray(rows)) throw new Error("Invalid database result.");
   if(rows.length) throw new Error("Duplicate Access email.");
   logger.log(`Target: ${options.target}; new Access-only admin; email ${options.email}; role ${options.role}; enabled=true. No GitHub or password identity.`);
+  logger.log("Planned mutation: INSERT admins + INSERT audit_logs (atomic); existing admins unchanged. New admin ID assigned only on execute.");
   if(!options.execute) {logger.log("Preview only. Add --execute to create. No database changes.");return;}
   // One atomic D1 file operation. UNIQUE also rejects a concurrent create.
   const sql=`INSERT INTO admins(access_email,role,enabled) VALUES(${sqlLiteral(options.email)},${sqlLiteral(options.role)},1);
