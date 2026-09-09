@@ -889,6 +889,7 @@ textarea:focus, input:focus { border-color: #b93e12; box-shadow: 0 0 0 3px #f6c6
 
 /* Minimal admin UI. Scoped to keep the public submission page unchanged. */
 .brand-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 0 0 20px; font-size: 14px; letter-spacing: .08em; }
+.submission-page .brand-line > span:first-child { font-size: 24px; font-weight: 700; }
 .brand-english { font-size: 10px; letter-spacing: .14em; }
 .admin-page .auth-copy .brand-english { margin: -8px 0 24px; color: var(--ink-muted); }
 .submission-page .panel__heading { align-items: flex-start; }

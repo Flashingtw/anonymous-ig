@@ -7,7 +7,7 @@
   },
   "publicPage": {
     "pageTitle": "大安匿名｜DAAN ANONYMOUS",
-    "metaDescription": "不需登入的匿名投稿頁，投稿將先由管理員審核。",
+    "metaDescription": "匿名投稿頁，投稿將先由管理員審核。",
     "homeAriaLabel": "大安匿名首頁",
     "eyebrow": "AN OPEN WALL. A SAFE SPACE.",
     "kicker": "DAAN ANONYMOUS",
@@ -16,7 +16,6 @@
     "form": {
       "stepLabel": "大安匿名",
       "title": "匿名投稿",
-      "privacyBadge": "不需登入",
       "contentLabel": "你的匿名投稿",
       "placeholder": "想說點甚麼?",
       "privacyHint": "請勿投稿個資或惡意內容。送出前，再讀一次吧。",
