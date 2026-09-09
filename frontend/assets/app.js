@@ -1,9 +1,9 @@
 import { ApiClientError, apiRequest } from "./api.js";
 import { formatText, getContent, loadContent } from "./content.js";
+import { MAX_CONTENT_LENGTH, contentLength } from "./submission-content.js";
 
-const MAX_CONTENT_LENGTH = 1000;
 const messages = {
-  characterCount: "{current} / {max} 字",
+  characterCount: "{current} / {max}",
   sending: "送出中⋯",
   submitLabel: "送出投稿",
   emptyContent: "請輸入投稿內容。",
@@ -20,9 +20,10 @@ const contentError = document.querySelector("#content-error");
 const statusBox = document.querySelector("#submission-status");
 const submitButton = document.querySelector("#submit-button");
 const submitButtonLabel = submitButton.querySelector("span");
+let sending = false;
 
 function inputLength() {
-  return Array.from(contentInput.value).length;
+  return contentLength(contentInput.value);
 }
 
 function updateCharacterCount() {
@@ -32,6 +33,11 @@ function updateCharacterCount() {
     max: MAX_CONTENT_LENGTH
   });
   characterCount.classList.toggle("is-over-limit", length > MAX_CONTENT_LENGTH);
+  characterCount.classList.toggle("is-near-limit", length >= 90 && length <= MAX_CONTENT_LENGTH);
+  submitButton.disabled = sending || length > MAX_CONTENT_LENGTH;
+  setFieldError(length > MAX_CONTENT_LENGTH ? formatText(messages.tooLong, {
+    max: MAX_CONTENT_LENGTH, over: length - MAX_CONTENT_LENGTH
+  }) : "");
 }
 
 function setFieldError(message = "") {
@@ -46,15 +52,16 @@ function setStatus(type, message) {
 }
 
 function setSending(isSending) {
+  sending = isSending;
   contentInput.disabled = isSending;
-  submitButton.disabled = isSending;
+  submitButton.disabled = isSending || inputLength() > MAX_CONTENT_LENGTH;
   submitButtonLabel.textContent = isSending ? messages.sending : messages.submitLabel;
   form.setAttribute("aria-busy", String(isSending));
 }
 
 function validate() {
   const value = contentInput.value.trim();
-  const length = Array.from(value).length;
+  const length = contentLength(value);
 
   if (!value) {
     setFieldError(messages.emptyContent);
@@ -95,12 +102,12 @@ function friendlyError(error) {
 
 contentInput.addEventListener("input", () => {
   updateCharacterCount();
-  setFieldError();
   statusBox.hidden = true;
 });
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (sending) return;
   statusBox.hidden = true;
 
   const content = validate();

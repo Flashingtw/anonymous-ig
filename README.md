@@ -1,5 +1,9 @@
 # 大安匿名 / DAAN ANONYMOUS — Admin UX + Team Accounts
 
+目前本機 UI 定稿分支：`codex/admin-minimal-ui`。新投稿上限統一為 **100 Unicode grapheme clusters**，前後端共用計數與常數；舊長文不修改。帳號建立 UI/API 已取消，沿用 CLI + Cloudflare Dashboard。這一輪 UI／限制修改尚未部署；詳見 [UI 定稿說明](docs/ui-finalization-submission-limit.md)。
+
+以下 Phase 4.7 段落保留原 checkpoint 的歷史狀態，不作為目前 production 狀態的查證。
+
 Phase 4.7 本機候選：`codex/admin-ux-team-accounts`，基底為 Phase 4.6 已完成 checkpoint `2027f800218ff1d109d202855451de9d61aa3648`。新版 UI、Access-only team CLI 與 0006 **尚未部署 production**。GitHub OAuth 保留且獨立；Email OTP 和 GitHub 共用既有 D1 opaque session。沒有 renderer、遠端字型、R2、0003、render API、產圖 UI 或 Instagram 變更。不可 merge 整條 renderer branch。
 
 Phase 4.6 正式 Gate 已完成：Access Email OTP enabled、GitHub 備援正常、LOCAL_AUTH_ENABLED=false。Repo 的 Access=false 是保守部署預設，**不代表正式站仍關閉**。4.7 實作、角色矩陣、截圖與限制見 [Phase 4.7 文件](docs/phase-4.7-admin-ux-team-accounts.md)。本輪不執行任何正式部署或帳號建立。

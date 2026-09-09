@@ -36,4 +36,14 @@ test("Worker WebCrypto validates Access RSA JWT and creates the existing D1 sess
   assert.equal(bad.status, 403);
   assert.equal((await bad.json()).error.code, "ACCESS_AUTH_FAILED");
   assert.equal(await db.prepare("SELECT COUNT(*) AS n FROM admin_sessions").first("n"), 1);
+  // Exercise the shared Segmenter in workerd, not only Node/browser fixtures.
+  for (const unit of ["字", "👨‍👩‍👧‍👦", "e\u0301"]) {
+    for (const count of [99, 100, 101]) {
+      const submitted = await mf.dispatchFetch(`${origin}/api/submissions`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: unit.repeat(count) })
+      });
+      assert.equal(submitted.status, count <= 100 ? 201 : 400);
+    }
+  }
 });

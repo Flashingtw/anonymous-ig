@@ -1,12 +1,10 @@
 import { ApiClientError, apiRequest } from "./api.js";
 import { adminAuth } from "./admin-auth.js";
 import { formatText, getContent, loadContent } from "./content.js";
+import { graphemeLength } from "./graphemes.js";
 
 const MIN_DEV_TOKEN_LENGTH = 24;
 const MIN_PASSWORD_LENGTH = 8;
-const passwordSegmenter = new Intl.Segmenter(undefined, {
-  granularity: "grapheme"
-});
 
 const messages = {
   authenticating: "驗證中⋯",
@@ -36,8 +34,8 @@ const messages = {
   genericModerationError: "處理失敗，請再試一次。",
   authNotConfigured: "管理員登入尚未設定完成。",
   invalidCredential: "憑證無效，請重新輸入。",
-  githubSessionExpired: "GitHub 管理員 session 已過期。",
-  notAdministrator: "Unauthorized / Not an administrator",
+  githubSessionExpired: "登入已過期，請重新登入。",
+  notAdministrator: "此帳號沒有管理權限。",
   oauthCancelled: "GitHub 登入已取消。",
   oauthFailed: "GitHub 登入失敗，請重新嘗試。",
   signedOut: "已登出。",
@@ -46,7 +44,7 @@ const messages = {
   backendUnavailable: "暫時無法連線到後端服務。",
   credentialTooShort: "請輸入至少 {min} 個字元的開發憑證。",
   defaultLoadError: "請確認後端服務是否正常。",
-  username: "@{username}",
+  username: "{username}",
   role: "{role}"
 };
 
@@ -60,6 +58,7 @@ const authTokenInput = document.querySelector("#admin-token");
 const authError = document.querySelector("#auth-error");
 const authSubmit = document.querySelector("#auth-submit");
 const dashboard = document.querySelector("#dashboard");
+const dashboardHeading = document.querySelector(".admin-heading h1");
 const devBanner = document.querySelector("#dev-banner");
 const adminUsername = document.querySelector("#admin-username");
 const adminRole = document.querySelector("#admin-role");
@@ -121,16 +120,20 @@ function renderIdentity() {
   teamTab.hidden = identity?.role !== "owner";
 }
 
-function showAuth(message = "") {
+function showAuth(message = "", { neutral = false } = {}) {
   teamRequest++;
   teamList.replaceChildren();
   teamPanel.hidden = true;
   queuePanel.hidden = false;
   teamTab.setAttribute("aria-pressed", "false");
   queueTab.setAttribute("aria-pressed", "true");
+  dashboardHeading.textContent = "投稿管理";
   dashboard.hidden = true;
   authPanel.hidden = false;
   authError.textContent = message;
+  authError.classList.toggle("is-info", neutral);
+  authError.setAttribute("role", neutral ? "status" : "alert");
+  authError.setAttribute("aria-live", neutral ? "polite" : "assertive");
   authError.hidden = !message;
   adminUsername.textContent = "";
   adminRole.textContent = "";
@@ -230,7 +233,7 @@ function showLocalAuthError(message) {
 }
 
 function passwordGraphemeLength(value) {
-  return [...passwordSegmenter.segment(value)].length;
+  return graphemeLength(value);
 }
 
 function setQueueView(view) {
@@ -276,6 +279,9 @@ function announce(message) {
 }
 
 async function moderateSubmission(submission, action, card, controls) {
+  if (card.getAttribute("aria-busy") === "true") return;
+  const focusedControl = document.activeElement;
+  const startedWithFocus = card.contains(focusedControl);
   const buttons = controls.querySelectorAll("button");
   buttons.forEach((button) => { button.disabled = true; });
   card.setAttribute("aria-busy", "true");
@@ -293,6 +299,8 @@ async function moderateSubmission(submission, action, card, controls) {
       headers: adminAuth.requestHeaders({ mutation: true })
     });
 
+    const nextCard = card.nextElementSibling ?? card.previousElementSibling;
+    const restoreFocus = startedWithFocus && (document.activeElement === document.body || card.contains(document.activeElement));
     card.remove();
     const remaining = submissionsList.childElementCount;
     updatePendingCount(remaining);
@@ -304,6 +312,9 @@ async function moderateSubmission(submission, action, card, controls) {
     if (remaining === 0) {
       setQueueView("empty");
     }
+    if (restoreFocus) {
+      (nextCard?.querySelector("button") ?? emptyRefreshButton).focus();
+    }
   } catch (error) {
     card.setAttribute("aria-busy", "false");
 
@@ -313,6 +324,9 @@ async function moderateSubmission(submission, action, card, controls) {
     }
 
     renderControls(submission, card, controls);
+    if (startedWithFocus && document.activeElement === document.body) {
+      controls.querySelector(`[data-action="${action}"]`)?.focus();
+    }
     const inlineError = card.querySelector(".submission-card__error");
     inlineError.textContent = error instanceof ApiClientError
       ? error.message
@@ -656,6 +670,7 @@ for (const input of [localUsernameInput, localPasswordInput]) {
 
 async function loadTeam() {
   if (adminAuth.identity()?.role !== "owner") return;
+  dashboardHeading.textContent = "管理員";
   const request = ++teamRequest;
   teamPanel.hidden = false;
   queuePanel.hidden = true;
@@ -675,7 +690,7 @@ async function loadTeam() {
       email.textContent = admin.email ?? "尚未綁定 Email";
       const details = document.createElement("p");
       details.className = "team-member__meta";
-      const labels = { github: "GitHub", access: "Email OTP", local: "Local（正式停用）" };
+      const labels = { github: "GitHub", access: "Email 驗證碼", local: "密碼（停用）" };
       details.textContent = `#${admin.id} · ${admin.role} · ${admin.enabled ? "啟用" : "停用"} · ${admin.providers.map(p => labels[p] ?? p).join(" / ")}`;
       card.append(name, email, details);
       teamList.append(card);
@@ -689,6 +704,7 @@ async function loadTeam() {
 }
 teamTab.addEventListener("click", loadTeam);
 queueTab.addEventListener("click", () => {
+  dashboardHeading.textContent = "投稿管理";
   teamRequest++;
   teamPanel.hidden = true;
   queuePanel.hidden = false;
@@ -702,7 +718,7 @@ emptyRefreshButton.addEventListener("click", () => loadSubmissions());
 clearAuthButton.addEventListener("click", async () => {
   if (adminAuth.mode === "dev") {
     adminAuth.clearCredential();
-    showAuth(messages.signedOut);
+    showAuth(messages.signedOut, { neutral: true });
     return;
   }
 
@@ -713,11 +729,11 @@ clearAuthButton.addEventListener("click", async () => {
       headers: adminAuth.requestHeaders({ mutation: true })
     });
     adminAuth.clearCredential();
-    showAuth(messages.signedOut);
+    showAuth(messages.signedOut, { neutral: true });
   } catch (error) {
     if (error instanceof ApiClientError && error.code === "AUDIT_LOG_FAILED") {
       adminAuth.clearCredential();
-      showAuth(messages.signedOutAuditWarning);
+      showAuth(messages.signedOutAuditWarning, { neutral: true });
       return;
     }
 

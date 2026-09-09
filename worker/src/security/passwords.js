@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "./crypto.js";
+import { graphemeLength } from "../../../frontend/assets/graphemes.js";
 
 export const PASSWORD_ALGORITHM = "pbkdf2_sha256";
 export const PASSWORD_ITERATIONS = 600_000;
@@ -10,9 +11,6 @@ const DERIVED_KEY_BYTES = 32;
 const MAX_PASSWORD_BYTES = 1024;
 const USERNAME_PATTERN = /^[a-zA-Z0-9_.-]{3,32}$/;
 const encoder = new TextEncoder();
-const graphemeSegmenter = new Intl.Segmenter(undefined, {
-  granularity: "grapheme"
-});
 
 // Public and intentionally non-secret. It exists only to equalize the costly
 // verification path when a username is absent from the database.
@@ -57,10 +55,6 @@ function base64UrlToBytes(value) {
   } catch {
     return null;
   }
-}
-
-function graphemeLength(value) {
-  return [...graphemeSegmenter.segment(value)].length;
 }
 
 export function normalizeUsername(value) {

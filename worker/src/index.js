@@ -48,7 +48,8 @@ const ADMIN_SHARED_ASSETS = new Set([
   "/assets/admin.js",
   "/assets/admin-auth.js",
   "/assets/api.js",
-  "/assets/content.js"
+  "/assets/content.js",
+  "/assets/graphemes.js"
 ]);
 
 function isAdminAssetPath(pathname) {

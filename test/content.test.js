@@ -11,8 +11,8 @@ test("reads nested editable content with a fallback", () => {
 
 test("formats known placeholders and preserves unknown ones", () => {
   assert.equal(
-    formatText("{current} / {max} 字", { current: 3, max: 1000 }),
-    "3 / 1000 字"
+    formatText("{current} / {max}", { current: 3, max: 100 }),
+    "3 / 100"
   );
   assert.equal(formatText("保留 {unknown}", {}), "保留 {unknown}");
 });

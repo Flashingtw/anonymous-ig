@@ -1,11 +1,8 @@
 import { HttpError } from "./errors.js";
 
-export const MAX_CONTENT_LENGTH = 1000;
+import { MAX_CONTENT_LENGTH, contentLength } from "../../frontend/assets/submission-content.js";
+export { MAX_CONTENT_LENGTH };
 export const MAX_REQUEST_BYTES = 16 * 1024;
-
-function contentLength(value) {
-  return Array.from(value).length;
-}
 
 export function validateSubmissionContent(value) {
   if (typeof value !== "string") {

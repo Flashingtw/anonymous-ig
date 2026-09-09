@@ -19,7 +19,7 @@ test("accepts content exactly at the character limit", () => {
   assert.equal(validateSubmissionContent(value), value);
 });
 
-test("counts emoji by Unicode code point", () => {
+test("counts standalone emoji as Unicode graphemes", () => {
   const value = "🙂".repeat(MAX_CONTENT_LENGTH);
   assert.equal(validateSubmissionContent(value), value);
 });

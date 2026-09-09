@@ -17,30 +17,15 @@
   </head>
   <body class="admin-page">
     <a class="skip-link" href="#admin-main">跳至主要內容</a>
-    <header class="site-header container">
-      <a class="brand" href="../" aria-label="回到匿名投稿首頁" data-copy="admin.homeAriaLabel" data-copy-attribute="aria-label">
-        <span class="brand__mark" aria-hidden="true" data-copy="site.brandMark">匿</span>
-        <span data-copy="site.brandName">大安匿名</span>
-      </a>
-      <span class="eyebrow" data-copy="admin.eyebrow">MODERATION</span>
-    </header>
-
     <main id="admin-main" class="container admin-main" tabindex="-1">
       <section id="auth-panel" class="auth-layout" aria-labelledby="auth-title">
-        <div class="auth-copy">
-          <p id="auth-kicker" class="kicker" data-copy="admin.auth.kicker">DAAN ANONYMOUS</p>
-          <h1 id="auth-title" class="admin-auth-title" data-copy="admin.auth.title">大安匿名</h1>
-          <p id="auth-description" data-copy="admin.auth.description">使用 Email 驗證碼或 GitHub 登入。</p>
-          <div class="wall-note auth-note">
-            <span class="note-number">BEHIND THE WALL</span>
-            <p>讓每一個聲音，<br>被好好對待。</p>
-            <span class="note-signature">審核之前，先理解。</span>
-          </div>
-        </div>
-
         <div class="panel auth-panel">
-          <p class="step-label">01 / TEAM ACCESS</p>
-          <h2>回到匿名牆的另一側。</h2>
+          <div class="auth-copy">
+            <p id="auth-kicker" class="kicker" data-copy="admin.auth.kicker">大安匿名</p>
+            <p class="brand-english">DAAN ANONYMOUS</p>
+            <h1 id="auth-title" class="admin-auth-title" data-copy="admin.auth.title">管理登入</h1>
+            <p id="auth-description" data-copy="admin.auth.description">請選擇登入方式。</p>
+          </div>
           <div id="session-auth-panel" class="auth-stack" hidden>
             <div id="access-auth-panel" hidden>
               <a id="access-sign-in" class="button button--primary button--wide" href="/api/auth/access">
@@ -90,11 +75,14 @@
                 <span data-copy="admin.auth.githubSignInLabel">Sign in with GitHub</span>
                 <span aria-hidden="true">→</span>
               </a>
-              <p class="field__hint" data-copy="admin.auth.githubHint">只會讀取 GitHub 公開身份。</p>
             </div>
           </div>
 
-          <p class="field__hint" data-copy="admin.auth.accessLogoutHint">Logout 只登出本後台。若 Cloudflare Access 登入仍有效，再按 Email 登入可能不需重新輸入驗證碼。</p>
+          <details class="login-help">
+            <summary>登入說明</summary>
+            <p class="field__hint" data-copy="admin.auth.githubHint">只會讀取 GitHub 公開身份。</p>
+            <p class="field__hint" data-copy="admin.auth.accessLogoutHint">登出只會結束本後台的登入。若 Cloudflare 驗證仍有效，再次使用 Email 登入可能不需重新收碼。</p>
+          </details>
 
           <form id="admin-auth-form" class="auth-form" novalidate hidden>
             <label for="admin-token" data-copy="admin.auth.credentialLabel">DEV 管理憑證</label>
@@ -121,10 +109,11 @@
       </section>
 
       <section id="dashboard" hidden>
+        <p class="brand-line"><span>大安匿名</span><span class="brand-english">DAAN ANONYMOUS</span></p>
         <nav class="admin-nav" aria-label="管理頁面">
-          <button id="queue-tab" class="button" type="button" aria-pressed="true">01 / 投稿審核</button>
-          <button id="team-tab" class="button" type="button" aria-pressed="false" hidden>02 / 管理員</button>
-          <span class="nav-note">PRIVATE WORKSPACE</span>
+          <button id="queue-tab" class="button" type="button" aria-pressed="true">投稿</button>
+          <button id="team-tab" class="button" type="button" aria-pressed="false" hidden>管理員</button>
+          <a class="admin-home-link" href="../" data-copy="admin.homeAriaLabel">回到大安匿名首頁</a>
         </nav>
         <div id="dev-banner" class="dev-banner" role="note" hidden>
           <span class="dev-banner__dot" aria-hidden="true">●</span>
@@ -133,9 +122,7 @@
 
         <div class="admin-heading">
           <div>
-            <p class="kicker" data-copy="admin.dashboard.kicker">REVIEW QUEUE</p>
             <h1 data-copy="admin.dashboard.title">投稿管理</h1>
-            <p data-copy="admin.dashboard.description">審核等待處理的匿名投稿。</p>
           </div>
           <div class="admin-toolbar">
             <span id="admin-identity" class="admin-identity">
@@ -145,14 +132,13 @@
             <span id="pending-count" class="count-badge">待審核 0 篇</span>
             <button id="refresh-button" class="button button--secondary" type="button" data-copy="admin.dashboard.refreshLabel">重新整理</button>
             <button id="password-form-toggle" class="button button--secondary" type="button" aria-expanded="false" aria-controls="password-account-panel" data-copy="admin.password.toggleLabel" hidden>修改密碼</button>
-            <button id="clear-auth-button" class="button button--quiet" type="button" data-copy="admin.dashboard.logoutLabel">Logout</button>
+            <button id="clear-auth-button" class="button button--quiet" type="button" data-copy="admin.dashboard.logoutLabel">登出</button>
           </div>
         </div>
 
         <section id="team-panel" class="panel team-panel" aria-labelledby="team-title" hidden>
-          <p class="step-label">PEOPLE BEHIND THE WALL</p>
           <h2 id="team-title">管理員</h2>
-          <p class="field__hint">唯讀名冊。新增成員請使用 CLI，並另外設定 Access Email allowlist。</p>
+          <p class="field__hint">管理員名冊，僅供查閱。</p>
           <p id="team-status" role="status" aria-live="polite"></p>
           <div id="team-list" class="team-list"></div>
         </section>
@@ -196,14 +182,12 @@
         </section>
 
         <section id="error-state" class="panel queue-state" hidden>
-          <p class="step-label" data-copy="admin.dashboard.errorEyebrow">CONNECTION ERROR</p>
           <h2 data-copy="admin.dashboard.errorTitle">無法載入投稿</h2>
           <p id="error-state-message" data-copy="admin.dashboard.errorBody">請確認後端服務是否正常。</p>
           <button id="retry-button" class="button button--secondary" type="button" data-copy="admin.dashboard.retryLabel">重新載入</button>
         </section>
 
         <section id="empty-state" class="panel queue-state" hidden>
-          <p class="step-label" data-copy="admin.dashboard.emptyEyebrow">ALL CLEAR</p>
           <h2 data-copy="admin.dashboard.emptyTitle">目前沒有待審核投稿</h2>
           <p data-copy="admin.dashboard.emptyBody">新的投稿會顯示在這裡。</p>
           <button id="empty-refresh-button" class="button button--secondary" type="button" data-copy="admin.dashboard.emptyRefreshLabel">重新整理</button>

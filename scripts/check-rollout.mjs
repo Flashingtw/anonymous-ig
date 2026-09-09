@@ -14,13 +14,22 @@ const git = (...args) => execFileSync("git", ["-c", `safe.directory=${root.repla
 const original = (path) => git("show", `${baseline}:${path}`);
 const normalized = (text) => text.replaceAll("\r\n", "\n");
 const unchanged = [
-  "frontend/assets/app.js", "frontend/assets/api.js",
+  "frontend/assets/api.js",
   "frontend/og-editable.svg", "worker/src/repositories/submissions.js",
   "migrations/0001_create_submissions.sql", "migrations/0002_create_admin_auth.sql"
 ];
 for (const path of unchanged) {
   assert.equal(normalized(await readFile(join(root, path), "utf8")), normalized(original(path)), `${path} must remain at production baseline`);
 }
+// Approved UI finalization replaces the old app.js byte-for-byte freeze.
+// Keep API transport/storage frozen; assert the new shared submission contract.
+const { MAX_CONTENT_LENGTH, contentLength } = await import("../frontend/assets/submission-content.js");
+const { validateSubmissionContent } = await import("../worker/src/validation.js");
+assert.equal(MAX_CONTENT_LENGTH, 100);
+assert.equal(contentLength("👨‍👩‍👧‍👦e\u0301"), 2);
+assert.equal(validateSubmissionContent("字".repeat(100)), "字".repeat(100));
+assert.throws(() => validateSubmissionContent("字".repeat(101)), error => error.code === "CONTENT_TOO_LONG");
+assert.match(await readFile(join(root, "frontend/assets/app.js"), "utf8"), /import \{ MAX_CONTENT_LENGTH, contentLength \} from "\.\/submission-content\.js"/);
 const migrations = (await readdir(join(root, "migrations"))).filter((name) => !name.startsWith("._")).sort();
 assert.deepEqual(migrations, ["0001_create_submissions.sql", "0002_create_admin_auth.sql", "0004_add_local_admin_auth.sql", "0005_add_access_email.sql", "0006_access_only_admins.sql"]);
 assert.equal(normalized(await readFile(join(root, "migrations/0004_add_local_admin_auth.sql"), "utf8")), normalized(git("show", "98858477827a7076b0e43cde2ed7f9f252fe2076:migrations/0004_add_local_admin_auth.sql")), "0004 must remain unchanged");
@@ -38,7 +47,7 @@ assert.match(config, /"ACCESS_AUTH_ENABLED": "false"/);
 const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 assert.deepEqual(manifest.dependencies ?? {}, { jose: "6.2.12" }, "only the reviewed JWT dependency may ship");
 assert.doesNotMatch(await readFile(join(root, "package-lock.json"), "utf8"), /@resvg|opentype/);
-console.log("Rollout boundary passed: public API retained; Phase 4.7 UI and migrations 0001+0002+0004+0005+0006.");
+console.log("Rollout boundary passed: submission transport/storage retained; shared 100-grapheme limit; migrations unchanged.");
 
 // Replay unmodified production tests against unmodified production Worker code,
 // changing only the D1 fixture to apply the candidate's 0006 schema.
