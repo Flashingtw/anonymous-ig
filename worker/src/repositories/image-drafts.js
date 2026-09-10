@@ -44,17 +44,19 @@ export async function publishImageVersion(db,id,revision,key,principal){
   if(!result[0].results.length)throw conflict();
   return {draft:await getImageDraft(db,id),versionId:version};
 }
-export async function listStudio(db){
+export async function listStudio(db,singleSend=false){
   const drafts=await db.prepare(`SELECT d.*,COALESCE(a.access_email,a.github_username,a.username,'本機管理員') AS editor,
     (SELECT id FROM image_versions v WHERE v.draft_id=d.id ORDER BY v.draft_revision DESC LIMIT 1) AS version_id
     FROM image_drafts d LEFT JOIN admins a ON a.id=d.editor_id ORDER BY d.updated_at DESC,d.id DESC`).all();
   const approved=await db.prepare("SELECT id,content FROM submissions WHERE status='approved' AND id NOT IN (SELECT id FROM image_drafts) ORDER BY id DESC").all();
   const dispatches=await db.prepare('SELECT id,caption,revision,updated_at FROM dispatch_drafts ORDER BY updated_at DESC').all();
-  return {drafts:drafts.results.map(row=>({...row,layout:JSON.parse(row.layout)})),approved:approved.results,dispatches:dispatches.results};
+  const sent=singleSend?new Set((await db.prepare('SELECT submission_id FROM send_records').all()).results.map(r=>r.submission_id)):new Set();
+  return {drafts:drafts.results.filter(r=>!sent.has(r.id)).map(row=>({...row,layout:JSON.parse(row.layout)})),approved:approved.results.filter(r=>!sent.has(r.id)),dispatches:dispatches.results};
 }
-export async function getDispatch(db,id){
+export async function getDispatch(db,id,singleSend=false){
   const draft=await db.prepare('SELECT * FROM dispatch_drafts WHERE id=?').bind(id).first();
   if(!draft)throw new HttpError(404,'DISPATCH_NOT_FOUND','找不到發送草稿。');
+  if(singleSend){const items=await db.prepare('SELECT version_id,submission_id AS draft_id FROM dispatch_items WHERE dispatch_id=? ORDER BY position').bind(id).all();return {...draft,items:items.results};}
   const items=await db.prepare(`SELECT i.version_id,v.draft_id,v.created_at,
     (SELECT id FROM image_versions newest WHERE newest.draft_id=v.draft_id ORDER BY draft_revision DESC LIMIT 1) AS latest_version_id
     FROM dispatch_items i JOIN image_versions v ON v.id=i.version_id WHERE i.dispatch_id=? ORDER BY i.position`).bind(id).all();

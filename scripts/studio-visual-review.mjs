@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {createServer} from 'node:http';
 import {readFile,mkdir,writeFile} from 'node:fs/promises';
 import {resolve,extname,sep} from 'node:path';
@@ -8,9 +9,9 @@ import {handleApiRequest} from '../worker/src/index.js';
 const serve=process.argv.includes('--serve');
 const root=resolve(import.meta.dirname,'..'),frontend=resolve(root,'frontend'),output=resolve(root,'tmp/studio-visual-review');
 await mkdir(output,{recursive:true});
-const db=createTestDatabase({images:true}),objects=new Map(),localToken=crypto.randomUUID();
+const db=createTestDatabase({images:true,singleSend:true}),objects=new Map(),localToken=crypto.randomUUID();
 db.raw.exec("INSERT INTO admins(id,github_user_id,github_username,role,access_email) VALUES(1,'123','test-owner','owner','owner@example.test'); INSERT INTO submissions(id,content,status) VALUES(1,'今天也要記得，留一點時間給自己。','approved'),(2,'不知道該怎麼說，但還是想謝謝一直陪著我的你。','approved');");
-const env={DB:db.DB,APP_ENV:'development',IMAGE_STUDIO_ENABLED:'true',ADMIN_AUTH_PROVIDER:'dev',DEV_ADMIN_MODE:'true',DEV_ADMIN_TOKEN:localToken,STUDIO_IMAGES:{async put(k,v){objects.set(k,v);},async get(k){return objects.has(k)?{body:objects.get(k)}:null;}}};
+const env={DB:db.DB,APP_ENV:'development',SINGLE_SEND_ENABLED:'true',IMAGE_STUDIO_ENABLED:'true',ADMIN_AUTH_PROVIDER:'dev',DEV_ADMIN_MODE:'true',DEV_ADMIN_TOKEN:localToken,STUDIO_IMAGES:{async put(k,v){objects.set(k,v);},async get(k){return objects.has(k)?{body:objects.get(k)}:null;},async delete(k){objects.delete(k);}}};
 const server=createServer(async(req,res)=>{
  try{
   const url=new URL(req.url,'http://127.0.0.1');
@@ -53,8 +54,8 @@ try{
  await page.mouse.move(rect.x+rect.width/2,rect.y+rect.height*675/1350);await page.mouse.down();await page.mouse.move(rect.x+rect.width/2+12,rect.y+rect.height*675/1350+12);await page.mouse.up();
  assert.notEqual(await page.locator('#pos-x').inputValue(),'540');await page.locator('#auto-layout').click();
  await page.screenshot({path:resolve(output,'editor-desktop.png'),fullPage:true});
- await page.locator('#image-number').fill('110');await page.locator('#auto-layout').click();
- assert.equal(await page.locator('#image-number').inputValue(),'110');
+ assert.equal(await page.locator('#image-number').getAttribute('readonly'),'');await page.locator('#auto-layout').click();
+ assert.equal(await page.locator('#image-number').inputValue(),'109');
  const textarea=page.locator('#image-text');await textarea.fill('這是編輯後的文字。\n謝謝你願意停下來，看見這些話。');
  await page.locator('#font-size').fill('64');await page.locator('#image-canvas').focus();await page.keyboard.press('ArrowRight');
  assert.equal(await page.locator('#pos-x').inputValue(),'541');
@@ -68,7 +69,7 @@ try{
  await page.getByRole('button',{name:'保存草稿',exact:true}).click();await idle();
  assert.equal(await page.locator('#editor').isVisible(),false);assert.equal(await page.locator('[data-tab="draft"]').getAttribute('aria-pressed'),'true');
  await page.getByRole('button',{name:'編輯圖片',exact:true}).click();await idle();
- assert.equal(await page.locator('#image-number').inputValue(),'110');
+ assert.equal(await page.locator('#image-number').inputValue(),'109');
  await page.getByRole('button',{name:'加入待發送',exact:true}).click();await idle();
  assert.match(await page.locator('#studio-status').innerText(),/已加入待發送/);
  assert.equal(await page.locator('#editor').isVisible(),false);assert.equal(await page.locator('[data-tab="draft"]').getAttribute('aria-pressed'),'true');
@@ -84,22 +85,42 @@ try{
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:resolve(output,'ready-mobile.png'),fullPage:true});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.setViewportSize({width:1440,height:1050});
  for(const checkbox of await page.getByRole('checkbox').all())await checkbox.check();await page.locator('#compose').click();await idle();
+ assert.match(await page.locator('#caption').inputValue(),/^🔒\n日期📆\n\d{4}\/\d{2}\/\d{2} - 星期[日一二三四五六]\n\n🔥匿名🔥\n#109\n#110\n\n⭐️規則說明在置頂！⭐️$/);
  await page.getByRole('button',{name:'往後',exact:true}).first().click();await idle();
- await page.locator('#caption').fill('今晚，留一句話給自己。');await page.getByRole('button',{name:'保存發送草稿',exact:true}).click();await idle();
+ await page.locator('#caption').fill('今晚，留一句話給自己。');await page.getByRole('button',{name:'保存本次發送',exact:true}).click();await idle();
+ assert.equal(await page.locator('#dispatch-editor').isVisible(),false);
+ assert.equal(await page.locator('[data-tab="ready"]').getAttribute('aria-pressed'),'true');
+ await page.getByRole('button',{name:'本次發送',exact:true}).click();await idle();
+ await page.getByRole('button',{name:'開啟本次發送'}).click();await idle();
+ assert.equal(await page.locator('#caption').inputValue(),'今晚，留一句話給自己。');
+ checks.push('explicit dispatch save returns to ready gallery and saved draft reopens');
  await page.screenshot({path:resolve(output,'dispatch-desktop.png'),fullPage:true});
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:resolve(output,'dispatch-mobile.png'),fullPage:true});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.setViewportSize({width:1440,height:1050});
- const downloadPromise=page.waitForEvent('download');await page.getByRole('button',{name:'下載整組 ZIP'}).click();const download=await downloadPromise;await idle();
+ const downloadPromise=page.waitForEvent('download');await page.locator('#download-dispatch').click();const download=await downloadPromise;await idle();
  await download.saveAs(resolve(output,'dispatch.zip'));assert.equal(await download.failure(),null);
  const archive=await readFile(resolve(output,'dispatch.zip'));let offset=0;const entries=[];
  while(archive.readUInt32LE(offset)===0x04034b50){const size=archive.readUInt32LE(offset+18),n=archive.readUInt16LE(offset+26),extra=archive.readUInt16LE(offset+28),start=offset+30+n+extra;entries.push({name:archive.subarray(offset+30,offset+30+n).toString(),data:archive.subarray(start,start+size)});offset=start+size;}
- assert.deepEqual(entries.map(e=>e.name),['01-submission-2.png','02-submission-1.png','caption.txt']);
+ assert.deepEqual(entries.map(e=>e.name),['01-daan-109.png','02-daan-110.png','caption.txt']);
  assert.equal(entries[2].data.toString(),'今晚，留一句話給自己。');assert.equal(entries[0].data.readUInt32BE(16),1080);assert.equal(entries[0].data.readUInt32BE(20),1350);
+ const locked=db.raw.prepare('SELECT submission_id,text,layout,number FROM send_items ORDER BY position').all().map(i=>({...i,layout:JSON.parse(i.layout)}));
+ const hashes=await page.evaluate(async items=>{const {loadStudioAssets,exportPng}=await import('/admin/studio/canvas.js');const assets=await loadStudioAssets();const output=[];for(const i of items){i.layout.number.label=String(i.number);const png=await exportPng(assets,{id:i.submission_id,text:i.text,layout:i.layout});output.push([...new Uint8Array(await crypto.subtle.digest('SHA-256',await png.arrayBuffer()))].map(x=>x.toString(16).padStart(2,'0')).join(''));}return output;},locked);
+ assert.deepEqual(entries.slice(0,2).map(e=>createHash('sha256').update(e.data).digest('hex')),hashes);
+ checks.push('each downloaded PNG byte-matches rendering of the server-locked number and source version');
  checks.push('ready selection, ordered immutable dispatch save, ZIP download');
- await page.locator('#close-dispatch').click();await page.getByRole('button',{name:'發送草稿',exact:true}).click();await idle();
- await page.getByRole('button',{name:'開啟發送草稿'}).click();await idle();assert.equal(await page.locator('#caption').inputValue(),'今晚，留一句話給自己。');
+ assert.equal(db.raw.prepare('SELECT last_number FROM send_progress').get().last_number,108);
+ await page.screenshot({path:resolve(output,'prepared-desktop.png'),fullPage:true});
+ await page.locator('#close-dispatch').click();await page.getByRole('button',{name:'本次發送',exact:true}).click();await idle();
+ await page.getByRole('button',{name:'開啟本次發送'}).click();await idle();assert.equal(await page.locator('#caption').inputValue(),'今晚，留一句話給自己。');
+ page.once('dialog',dialog=>dialog.accept());await page.locator('#confirm-send').click();await idle();
+ assert.equal(db.raw.prepare('SELECT last_number FROM send_progress').get().last_number,109);
+ assert.equal(db.raw.prepare('SELECT count(*) n FROM send_records').get().n,1);
+ await page.setViewportSize({width:390,height:844});await page.screenshot({path:resolve(output,'partial-confirm-mobile.png'),fullPage:true});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ page.once('dialog',dialog=>dialog.accept());await page.locator('#cancel-send').click();await idle();
+ assert.equal(db.raw.prepare('SELECT last_number FROM send_progress').get().last_number,109);
+ checks.push('download does not consume numbers; partial prefix confirmation advances once; cancel keeps last confirmed');
  checks.push('dispatch reopening preserves caption and version');
- await page.locator('#close-dispatch').click();await page.getByRole('button',{name:'待發送',exact:true}).click();await idle();await page.getByRole('button',{name:'編輯圖片'}).first().click();await idle();
+ await page.getByRole('button',{name:'待發送',exact:true}).click();await idle();await page.getByRole('button',{name:'編輯圖片'}).first().click();await idle();
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:resolve(output,'editor-mobile.png'),fullPage:true});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  await page.locator('#pos-y').fill('1300');assert.equal(await page.getByRole('button',{name:'加入待發送',exact:true}).isDisabled(),true);
@@ -117,5 +138,5 @@ try{
  checks.push('mobile no overflow, out-of-paper warning, reset, over-limit export blocked');
  assert.deepEqual(errors,[]);
  assert.equal(db.raw.prepare("SELECT content FROM submissions WHERE id=2").get().content,'不知道該怎麼說，但還是想謝謝一直陪著我的你。');
- await writeFile(resolve(output,'report.json'),JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:6},null,2));console.log(JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:6}));
+ await writeFile(resolve(output,'report.json'),JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:8},null,2));console.log(JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:8}));
 }finally{await browser.close();await new Promise(r=>server.close(r));db.close();}

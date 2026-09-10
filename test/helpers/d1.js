@@ -77,7 +77,7 @@ class TestD1Database {
   }
 }
 
-export function createTestDatabase({ access = true, team = true, images = false } = {}) {
+export function createTestDatabase({ access = true, team = true, images = false, singleSend = false } = {}) {
   const database = new DatabaseSync(":memory:");
   database.exec("PRAGMA foreign_keys = ON;");
 
@@ -95,6 +95,7 @@ export function createTestDatabase({ access = true, team = true, images = false 
   }
 
   if (images) database.exec(readFileSync(new URL("../../migrations/0007_image_drafts.sql", import.meta.url), "utf8"));
+  if (singleSend) database.exec(readFileSync(new URL("../../migrations/0008_single_dispatch.sql", import.meta.url), "utf8"));
   return {
     DB: new TestD1Database(database),
     raw: database,

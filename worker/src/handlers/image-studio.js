@@ -6,6 +6,7 @@ import {validDocument,validItems} from '../../../frontend/admin/studio/model.js'
 import {graphemeLength} from '../../../frontend/assets/graphemes.js';
 import {crc32} from '../../../frontend/admin/studio/zip.js';
 import {createImageDraft,getImageDraft,saveImageDraft,listStudio,publishImageVersion,getDispatch,saveDispatch} from '../repositories/image-drafts.js';
+import {currentSendHandler} from './current-send.js';
 export const studioEnabled=env=>env.IMAGE_STUDIO_ENABLED==='true';
 const fail=(code,message,status=400)=>{throw new HttpError(status,code,message);};
 const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value);
@@ -29,7 +30,7 @@ export function validatePng(bytes){
   }
   if(!header||!idat||!end||offset!==bytes.length)fail('INVALID_PNG','PNG 不完整。');
 }
-async function readImage(request){
+export async function readImage(request){
   if(request.headers.get('content-type')!=='image/png')fail('INVALID_PNG','只接受 image/png。');
   const reader=request.body?.getReader();if(!reader)fail('INVALID_PNG','缺少圖片。');
   const chunks=[];let size=0;
@@ -40,9 +41,11 @@ export async function imageStudioHandler(request,env,principal,path){
   if(!studioEnabled(env))fail('IMAGE_STUDIO_DISABLED','製圖功能尚未啟用。',503);
   const db=env.DB,url=new URL(request.url);
   if(request.method!=='GET')await verifyAdminCsrf(request,principal,env);
+  if(path==='/api/admin/studio/send'||path.startsWith('/api/admin/studio/send/'))return currentSendHandler(request,env,principal,path);
+  if(env.SINGLE_SEND_ENABLED==='true'&&path.includes('/dispatches')&&request.method!=='GET')fail('HISTORY_READ_ONLY','歷史草稿僅供讀取，請複製到本次發送。',409);
   if(path==='/api/admin/studio'){
     if(request.method!=='GET')return methodNotAllowed(['GET']);
-    return jsonResponse({ok:true,data:await listStudio(db)});
+    return jsonResponse({ok:true,data:await listStudio(db,env.SINGLE_SEND_ENABLED==='true')});
   }
   let match=path.match(/^\/api\/admin\/studio\/images\/([^/]+)$/);
   if(match){
@@ -50,6 +53,7 @@ export async function imageStudioHandler(request,env,principal,path){
     if(!uuid(match[1]))fail('INVALID_ID','圖片編號錯誤。');
     const version=await db.prepare('SELECT object_key,draft_id FROM image_versions WHERE id=?').bind(match[1]).first();
     if(!version)fail('IMAGE_NOT_FOUND','圖片不存在。',404);
+    if(env.SINGLE_SEND_ENABLED==='true'&&await db.prepare("SELECT 1 FROM send_records WHERE submission_id=? AND (purged_at IS NOT NULL OR julianday(expires_at)<=julianday('now'))").bind(version.draft_id).first())fail('IMAGE_NOT_FOUND','圖片保留期已過。',404);
     if(!env.STUDIO_IMAGES)fail('IMAGE_STORAGE_UNAVAILABLE','圖片儲存尚未設定。',503);
     const object=await env.STUDIO_IMAGES.get(version.object_key);if(!object)fail('IMAGE_NOT_FOUND','圖片無法讀取。',404);
     return new Response(object.body,{headers:{'Content-Type':'image/png','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff',...(url.searchParams.has('download')?{'Content-Disposition':`attachment; filename="submission-${version.draft_id}.png"`}:{})}});
@@ -57,6 +61,10 @@ export async function imageStudioHandler(request,env,principal,path){
   match=path.match(/^\/api\/admin\/studio\/drafts\/(\d+)(\/ready)?$/);
   if(match){
     const id=parsePositiveInteger(match[1]);
+    if(env.SINGLE_SEND_ENABLED==='true'){
+      const locked=await db.prepare("SELECT 1 FROM send_records WHERE submission_id=? UNION SELECT 1 FROM send_items i JOIN send_batches b ON b.id=i.batch_id WHERE i.submission_id=? AND b.state='prepared'").bind(id,id).first();
+      if(locked)fail('IMAGE_LOCKED','此圖片已鎖定或已確認發送。',409);
+    }
     if(match[2]){
       if(request.method!=='POST')return methodNotAllowed(['POST']);
       const revision=parsePositiveInteger(request.headers.get('If-Match')??'');
@@ -65,10 +73,13 @@ export async function imageStudioHandler(request,env,principal,path){
       if(!validDocument(draft.text,draft.layout))fail('INVALID_IMAGE_DOCUMENT','請先修正並保存草稿。');
       if(!env.STUDIO_IMAGES)fail('IMAGE_STORAGE_UNAVAILABLE','圖片儲存尚未設定。',503);
       const bytes=await readImage(request),key=`studio/${id}/${crypto.randomUUID()}.png`;
+      if(env.SINGLE_SEND_ENABLED==='true')await db.prepare("INSERT INTO send_uploads VALUES(?,strftime('%Y-%m-%dT%H:%M:%fZ','now','+1 day'))").bind(key).run();
       await env.STUDIO_IMAGES.put(key,bytes,{httpMetadata:{contentType:'image/png'}});
       // An uncertain D1 response must not delete a potentially committed object.
       // Unreferenced uploads are harmless private orphans, retained for reconciliation.
-      return jsonResponse({ok:true,data:await publishImageVersion(db,id,revision,key,principal)});
+      const published=await publishImageVersion(db,id,revision,key,principal);
+      if(env.SINGLE_SEND_ENABLED==='true')await db.prepare('DELETE FROM send_uploads WHERE object_key=?').bind(key).run();
+      return jsonResponse({ok:true,data:published});
     }
     if(request.method==='GET')return jsonResponse({ok:true,data:await getImageDraft(db,id)});
     if(request.method==='POST')return jsonResponse({ok:true,data:await createImageDraft(db,id,principal)});
@@ -81,7 +92,7 @@ export async function imageStudioHandler(request,env,principal,path){
   }
   match=path.match(/^\/api\/admin\/studio\/dispatches(?:\/([^/]+))?$/);
   if(match){
-    if(request.method==='GET'&&uuid(match[1]))return jsonResponse({ok:true,data:await getDispatch(db,match[1])});
+    if(request.method==='GET'&&uuid(match[1]))return jsonResponse({ok:true,data:await getDispatch(db,match[1],env.SINGLE_SEND_ENABLED==='true')});
     if((request.method==='POST'&&!match[1])||(request.method==='PUT'&&uuid(match[1]))){
       const body=await parseJsonObject(request,{allowedKeys:['revision','caption','items'],maxBytes:16384});
       if(typeof body.caption!=='string'||graphemeLength(body.caption)>2000||!validItems(body.items)||!Number.isSafeInteger(body.revision)||body.revision<0||(!match[1]?body.revision!==0:body.revision<1))fail('INVALID_DISPATCH','請選 1–10 張不重複圖片，說明最多 2000 字。');

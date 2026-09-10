@@ -126,6 +126,9 @@ try {
   assert.equal(new Set(cardPositions).size,1,"Minimal queue must be single-column");
   await shot("admin-dashboard-desktop");
   await page.locator("#team-tab").click();await page.locator(".team-member").first().waitFor();
+  assert.equal(await page.locator('.admin-nav #studio-nav').isVisible(),true);
+  assert.equal(await page.locator('#studio-nav').getAttribute('href'),'/admin/studio/');
+  assert.equal(await page.getByRole('link',{name:'圖片工作室',exact:true}).count(),1);
   assert.equal(await page.locator(".admin-heading h1").textContent(),"管理員");
   await shot("admin-team-desktop");
   await page.locator("#queue-tab").click();

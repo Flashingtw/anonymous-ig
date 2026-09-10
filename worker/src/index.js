@@ -269,6 +269,10 @@ export async function handleApiRequest(request, env, dependencies = {}) {
 }
 
 export default {
+  async scheduled(event,env,context) {
+    const {cleanupSentImages}=await import('./repositories/send-cleanup.js');
+    context.waitUntil(cleanupSentImages(env));
+  },
   async fetch(request, env) {
     const url = new URL(request.url);
 

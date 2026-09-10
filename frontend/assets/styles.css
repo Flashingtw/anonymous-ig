@@ -920,7 +920,8 @@ textarea:focus { box-shadow: 0 0 0 3px #b93e1226; }
 .admin-page .login-help p { margin-block: 10px 0; }
 .admin-page #auth-error:empty { margin: 0; min-height: 0; }
 .admin-page #auth-error.is-info { color: var(--ink-muted); }
-.admin-page .admin-nav { gap: 24px; margin-bottom: 26px; }
+.admin-page .admin-nav { gap: 12px 24px; margin-bottom: 26px; flex-wrap: wrap; }
+.admin-page .admin-nav .button { white-space: nowrap; }
 .admin-page .admin-nav .button { padding-block: 10px 14px; border-bottom-width: 2px; }
 .admin-page .admin-home-link { margin-left: auto; color: #c1c2b7; font-size: 13px; text-decoration: none; }
 .admin-page .admin-home-link:hover { text-decoration: underline; }
