@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 
-const roots = ["worker/src", "frontend/assets", "scripts", "test"];
+const roots = ["worker/src", "frontend/assets", "frontend/admin/studio", "scripts", "test"];
 const files = [];
 
 function collect(directory) {

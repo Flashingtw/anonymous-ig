@@ -3,6 +3,8 @@
   "name": "anonymous-submissions-api-local",
   "main": "worker/src/index.js",
   "compatibility_date": "2026-08-31",
+  "vars": { "IMAGE_STUDIO_ENABLED": "true" },
+  "r2_buckets": [{ "binding": "STUDIO_IMAGES", "bucket_name": "anonymous-studio-local" }],
   "assets": {
     "directory": "./frontend",
     "binding": "ASSETS",

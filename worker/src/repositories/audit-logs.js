@@ -1,4 +1,5 @@
 const ALLOWED_ACTIONS = new Set([
+  "image_draft_created", "image_draft_saved", "image_ready", "dispatch_saved",
   "login",
   "logout",
   "approve_submission",

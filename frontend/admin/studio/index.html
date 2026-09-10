@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>圖片工作室｜大安匿名</title>
+  <link rel="stylesheet" href="/assets/styles.css"><link rel="stylesheet" href="./studio.css">
+  <script src="/config.js"></script><script type="module" src="./studio.js"></script>
+</head>
+<body class="studio-page">
+  <main class="studio-main">
+    <header class="studio-header"><div><p class="kicker">DAAN ANONYMOUS</p><h1>圖片工作室</h1></div><a href="/admin/">返回投稿管理</a></header>
+    <p id="studio-identity"></p>
+    <nav aria-label="製圖流程"><button data-tab="draft">圖片草稿</button><button data-tab="ready">待發送</button><button data-tab="dispatch">發送草稿</button></nav>
+    <p id="studio-status" role="status" aria-live="polite"></p>
+    <button id="reload">重新整理</button>
+    <section id="gallery" class="studio-grid" aria-label="圖片列表"></section>
+    <button id="compose" hidden>準備發送</button>
+    <section id="editor" class="studio-paper" hidden aria-labelledby="editor-title">
+      <div class="studio-heading"><h2 id="editor-title">編輯圖片</h2><button id="close-editor">關閉</button></div>
+      <div class="editor-grid">
+        <div class="canvas-wrap"><canvas id="image-canvas" width="1080" height="1350" tabindex="0" aria-label="圖片預覽。選擇文字框後可拖移，方向鍵微調，Shift 加速。"></canvas></div>
+        <div class="editor-controls">
+          <label for="image-text">圖片正文（不修改原投稿）</label><textarea id="image-text" rows="7"></textarea>
+          <p id="image-count"></p>
+          <label for="image-number">圖片編號（手動）</label><input id="image-number" type="text" inputmode="numeric" maxlength="6" pattern="[1-9][0-9]{0,5}">
+          <p class="field__hint">舊編號到 108，接續由 109 起。依預計發送順序手動填寫；不占號、不改投稿 ID。</p>
+          <label for="selected-box">選擇文字框</label><select id="selected-box"><option value="body">正文</option><option value="number">圖片編號</option></select>
+          <label for="font-size">字級（輸出 px）</label><input id="font-size" type="number" min="24" max="120" step="1">
+          <div class="position-inputs"><label>X<input id="pos-x" type="number" min="0" max="1080"></label><label>Y<input id="pos-y" type="number" min="0" max="1350"></label></div>
+          <button id="center-text" type="button">水平置中</button>
+          <button id="center-vertical" type="button">垂直置中</button>
+          <p class="field__hint">拖近畫布或另一文字框的中心線時自動吸附；按住 Alt 可暫時取消。輔助線不會匯出。</p>
+          <div class="studio-actions"><button id="auto-layout">還原自動排版</button><button id="save-image">保存草稿</button><button id="ready-image">加入待發送</button></div>
+          <p id="image-error" role="status" aria-live="polite"></p><button id="retry-assets" hidden>重試載入字型與底圖</button>
+          <p class="field__hint">橘色框只供編輯，不會出現在下載圖片。使用方向鍵可微調位置。</p>
+        </div>
+      </div>
+    </section>
+    <section id="dispatch-editor" class="studio-paper" hidden aria-labelledby="dispatch-title">
+      <div class="studio-heading"><h2 id="dispatch-title">準備發送</h2><button id="close-dispatch">關閉</button></div>
+      <p>此處只保存與下載，不會發布到 IG。每組 1–10 張。</p>
+      <ol id="dispatch-items"></ol>
+      <label for="caption">貼文說明</label><textarea id="caption" rows="5" placeholder="這組圖片的貼文說明⋯"></textarea><p id="caption-count">0 / 2000</p>
+      <div class="studio-actions"><button id="save-dispatch">保存發送草稿</button><button id="download-dispatch">下載整組 ZIP</button></div>
+    </section>
+  </main>
+</body></html>

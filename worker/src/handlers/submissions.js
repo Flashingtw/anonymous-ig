@@ -1,4 +1,6 @@
 import { HttpError } from "../errors.js";
+import {approveWithImageDraft} from "../repositories/image-drafts.js";
+import {studioEnabled} from "./image-studio.js";
 import { verifyAdminCsrf } from "../auth.js";
 import { jsonResponse } from "../http.js";
 import {
@@ -63,6 +65,10 @@ export async function moderateSubmissionHandler(
 ) {
   await verifyAdminCsrf(request, principal, env);
   const id = parsePositiveInteger(rawId);
+  if (action === "approve" && studioEnabled(env)) {
+    const submission = await approveWithImageDraft(env.DB, id, principal);
+    return jsonResponse({ok: true, data: {submission}});
+  }
   const nextStatus = action === "approve" ? "approved" : "rejected";
   const auditAction = action === "approve"
     ? "approve_submission"

@@ -31,7 +31,7 @@ assert.equal(validateSubmissionContent("字".repeat(100)), "字".repeat(100));
 assert.throws(() => validateSubmissionContent("字".repeat(101)), error => error.code === "CONTENT_TOO_LONG");
 assert.match(await readFile(join(root, "frontend/assets/app.js"), "utf8"), /import \{ MAX_CONTENT_LENGTH, contentLength \} from "\.\/submission-content\.js"/);
 const migrations = (await readdir(join(root, "migrations"))).filter((name) => !name.startsWith("._")).sort();
-assert.deepEqual(migrations, ["0001_create_submissions.sql", "0002_create_admin_auth.sql", "0004_add_local_admin_auth.sql", "0005_add_access_email.sql", "0006_access_only_admins.sql"]);
+assert.deepEqual(migrations, ["0001_create_submissions.sql", "0002_create_admin_auth.sql", "0004_add_local_admin_auth.sql", "0005_add_access_email.sql", "0006_access_only_admins.sql", "0007_image_drafts.sql"]);
 assert.equal(normalized(await readFile(join(root, "migrations/0004_add_local_admin_auth.sql"), "utf8")), normalized(git("show", "98858477827a7076b0e43cde2ed7f9f252fe2076:migrations/0004_add_local_admin_auth.sql")), "0004 must remain unchanged");
 const paths = git("ls-files", "--cached", "--others", "--exclude-standard").trim().split(/\r?\n/);
 const forbidden = /(?:^|\/)(?:rendering|fonts|render-fixtures)(?:\/|\.)|0003|(?:^|\/)render[^/]*\.(?:js|mjs|json)$/i;
@@ -50,7 +50,7 @@ assert.doesNotMatch(await readFile(join(root, "package-lock.json"), "utf8"), /@r
 console.log("Rollout boundary passed: submission transport/storage retained; shared 100-grapheme limit; migrations unchanged.");
 
 // Replay unmodified production tests against unmodified production Worker code,
-// changing only the D1 fixture to apply the candidate's 0006 schema.
+// changing only the D1 fixture to apply the candidate's 0007 schema.
 // CI must fetch history so the pinned baseline is available. No remote calls.
 const temporaryRoot = await mkdtemp(join(tmpdir(), "anonymous-legacy-schema-"));
 try {
@@ -62,13 +62,14 @@ try {
   }
   for (const path of ["test/helpers/d1.js", ...migrations.map((name) => `migrations/${name}`)]) {
     await mkdir(dirname(join(temporaryRoot, path)), { recursive: true });
-    await writeFile(join(temporaryRoot, path), await readFile(join(root, path)));
+    const contents = await readFile(join(root, path), 'utf8');
+    await writeFile(join(temporaryRoot, path), path === 'test/helpers/d1.js' ? contents.replace('images = false', 'images = true') : contents);
   }
   await writeFile(join(temporaryRoot, "package.json"), '{"type":"module"}');
   for (const [label, directory] of [["production baseline", temporaryRoot], ["rollout candidate", root]]) {
     const { handleApiRequest } = await import(pathToFileURL(join(directory, "worker/src/index.js")));
     const { createTestDatabase } = await import(pathToFileURL(join(directory, "test/helpers/d1.js")));
-    const database = createTestDatabase();
+    const database = createTestDatabase({images:true});
     try {
       const response = await handleApiRequest(new Request("https://admin.example.test/api/submissions", {
         method: "POST", headers: { "Content-Type": "application/json", Origin: "https://flashingtw.github.io" },
@@ -82,12 +83,12 @@ try {
       const payload = await response.json();
       assert.equal(payload.data.submission.status, "pending");
       assert.equal(payload.data.submission.content, undefined);
-      console.log(`${label}: public submission on schema 0006 passed.`);
+      console.log(`${label}: public submission on schema 0007 passed.`);
     } finally {
       database.close();
     }
   }
-  console.log(`Replaying production ${baseline} OAuth, moderation, logout and security tests on schema 0006.`);
+  console.log(`Replaying production ${baseline} OAuth, moderation, logout and security tests on schema 0007.`);
   const result = spawnSync(process.execPath, ["--test", ...testPaths], {
     cwd: temporaryRoot, stdio: "inherit", timeout: 60_000
   });

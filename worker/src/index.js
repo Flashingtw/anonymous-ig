@@ -22,6 +22,7 @@ import {
 import { healthHandler } from "./handlers/health.js";
 import { accessLoginHandler } from "./handlers/access-auth.js";
 import { adminDirectoryHandler } from "./handlers/admin-directory.js";
+import {imageStudioHandler} from "./handlers/image-studio.js";
 import {
   authProvidersHandler,
   changePasswordHandler,
@@ -65,7 +66,9 @@ function secureAdminAssetResponse(response, pathname) {
 
   if (pathname === "/admin" || pathname.startsWith("/admin/")) {
     headers.set("Cache-Control", "no-store");
-    headers.set("Content-Security-Policy", ADMIN_HTML_CSP);
+    headers.set("Content-Security-Policy", pathname.startsWith("/admin/studio/")
+      ? ADMIN_HTML_CSP.replace("img-src 'self' data:", "img-src 'self' data: blob:")
+      : ADMIN_HTML_CSP);
     headers.set("X-Frame-Options", "DENY");
   } else if (pathname === "/config.js" || pathname === "/content.json") {
     headers.set("Cache-Control", "no-store");
@@ -193,6 +196,10 @@ export async function routeApi(request, env, dependencies = {}) {
     authorizeAdmin(principal, ["owner"]);
     if (request.method !== "GET") return methodNotAllowed(["GET"]);
     return adminDirectoryHandler(request, env, principal);
+  }
+
+  if (pathname === "/api/admin/studio" || pathname.startsWith("/api/admin/studio/")) {
+    return imageStudioHandler(request, env, principal, pathname);
   }
 
   if (pathname === "/api/admin/submissions") {
