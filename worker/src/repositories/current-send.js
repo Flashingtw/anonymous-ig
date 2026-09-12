@@ -23,7 +23,7 @@ async function commit(db,revision,principal,action,statements,metadata={}){
   prepareAuditLog(db,{adminId:principal.adminId??null,action,metadata}),
   db.prepare('DELETE FROM send_assertion')
  ]);
- }catch(error){if(/CHECK constraint failed|UNIQUE constraint failed/.test(error.message))fail('本次發送已更新或圖片不可用，請重新載入。');throw error;}
+ }catch(error){if(/CHECK constraint failed|UNIQUE constraint failed|STUDIO_REMOVAL_CONFLICT/.test(error.message))fail('本次發送已更新或圖片不可用，請重新載入。');throw error;}
  return currentSend(db);
 }
 export async function changeSend(db,command,body,principal){
@@ -65,6 +65,19 @@ export async function changeSend(db,command,body,principal){
   }else fail('未知操作。',400);
  }
  return commit(db,rev,principal,'send_'+command,statements,{batchId:b?.id??null,count:body.count??null,manualConfirmation:command==='confirm'});
+}
+export async function increaseLastNumber(db,{revision,lastNumber},principal){
+ if(principal.role!=='owner')throw new HttpError(403,'FORBIDDEN','只有 owner 可以調整最後編號。');
+ if(!Number.isSafeInteger(lastNumber)||lastNumber<1||lastNumber>1000000000)throw new HttpError(400,'INVALID_NUMBER','請輸入 1–1000000000 的整數。');
+ const state=await currentSend(db);
+ if(state.batch)fail('請先完成或取消本次發送，再調整編號。');
+ if(lastNumber<=state.last_number)fail('只能調高最後編號，不能相同或往下調整。',400);
+ return commit(db,revision,principal,'send_number_adjust',[
+  assert(db,"NOT EXISTS(SELECT 1 FROM send_batches WHERE state IN ('editing','prepared'))"),
+  assert(db,"EXISTS(SELECT 1 FROM admins WHERE id=? AND role='owner' AND enabled=1)",principal.adminId),
+  stmt(db,'UPDATE send_progress SET last_number=? WHERE id=1 AND last_number<?',lastNumber,lastNumber),
+  assert(db,'changes()=1')
+ ],{previousNumber:state.last_number,lastNumber,manualAdjustment:true});
 }
 export async function attachFinal(db,{revision,generation,position,key},principal){
  const {batch:b}=await currentSend(db);

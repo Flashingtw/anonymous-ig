@@ -1,4 +1,6 @@
 const ALLOWED_ACTIONS = new Set([
+  "studio_item_removed",
+  "send_number_adjust",
   "send_save", "send_prepare", "send_reset", "send_cancel", "send_confirm", "send_image",
   "image_draft_created", "image_draft_saved", "image_ready", "dispatch_saved",
   "login",

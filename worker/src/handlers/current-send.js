@@ -1,12 +1,18 @@
 import {HttpError} from '../errors.js';
 import {jsonResponse,methodNotAllowed} from '../http.js';
 import {parseJsonObject} from '../validation.js';
-import {currentSend,changeSend,attachFinal,sentRecords} from '../repositories/current-send.js';
+import {currentSend,changeSend,attachFinal,sentRecords,increaseLastNumber} from '../repositories/current-send.js';
 import {readImage} from './image-studio.js';
 export async function currentSendHandler(request,env,principal,path){
  const root='/api/admin/studio/send',db=env.DB;
  if(env.SINGLE_SEND_ENABLED!=='true')throw new HttpError(503,'SINGLE_SEND_DISABLED','本次發送尚未啟用。');
  if(path===root&&request.method==='GET')return jsonResponse({ok:true,data:await currentSend(db)});
+ if(path===root+'/number'){
+  if(principal.role!=='owner')throw new HttpError(403,'FORBIDDEN','只有 owner 可以調整最後編號。');
+  if(request.method!=='POST')return methodNotAllowed(['POST']);
+  const body=await parseJsonObject(request,{allowedKeys:['revision','lastNumber'],maxBytes:1024});
+  return jsonResponse({ok:true,data:await increaseLastNumber(db,body,principal)});
+ }
  if(path===root+'/records'&&request.method==='GET'){
   const before=Number(new URL(request.url).searchParams.get('before')??Number.MAX_SAFE_INTEGER);
   if(!Number.isSafeInteger(before)||before<1)throw new HttpError(400,'INVALID_CURSOR','紀錄頁碼錯誤。');

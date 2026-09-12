@@ -6,12 +6,13 @@ import {resolve,extname,sep} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {createTestDatabase} from '../test/helpers/d1.js';
 import {handleApiRequest} from '../worker/src/index.js';
+import {increaseLastNumber} from '../worker/src/repositories/current-send.js';
 const serve=process.argv.includes('--serve');
 const root=resolve(import.meta.dirname,'..'),frontend=resolve(root,'frontend'),output=resolve(root,'tmp/studio-visual-review');
 await mkdir(output,{recursive:true});
-const db=createTestDatabase({images:true,singleSend:true}),objects=new Map(),localToken=crypto.randomUUID();
+const db=createTestDatabase({images:true,singleSend:true,studioDelete:true}),objects=new Map(),localToken=crypto.randomUUID();
 db.raw.exec("INSERT INTO admins(id,github_user_id,github_username,role,access_email) VALUES(1,'123','test-owner','owner','owner@example.test'); INSERT INTO submissions(id,content,status) VALUES(1,'今天也要記得，留一點時間給自己。','approved'),(2,'不知道該怎麼說，但還是想謝謝一直陪著我的你。','approved');");
-const env={DB:db.DB,APP_ENV:'development',SINGLE_SEND_ENABLED:'true',IMAGE_STUDIO_ENABLED:'true',ADMIN_AUTH_PROVIDER:'dev',DEV_ADMIN_MODE:'true',DEV_ADMIN_TOKEN:localToken,STUDIO_IMAGES:{async put(k,v){objects.set(k,v);},async get(k){return objects.has(k)?{body:objects.get(k)}:null;},async delete(k){objects.delete(k);}}};
+const env={DB:db.DB,APP_ENV:'development',STUDIO_DELETE_ENABLED:'true',SINGLE_SEND_ENABLED:'true',IMAGE_STUDIO_ENABLED:'true',ADMIN_AUTH_PROVIDER:'dev',DEV_ADMIN_MODE:'true',DEV_ADMIN_TOKEN:localToken,STUDIO_IMAGES:{async put(k,v){objects.set(k,v);},async get(k){return objects.has(k)?{body:objects.get(k)}:null;},async delete(k){objects.delete(k);}}};
 const server=createServer(async(req,res)=>{
  try{
   const url=new URL(req.url,'http://127.0.0.1');
@@ -138,5 +139,38 @@ try{
  checks.push('mobile no overflow, out-of-paper warning, reset, over-limit export blocked');
  assert.deepEqual(errors,[]);
  assert.equal(db.raw.prepare("SELECT content FROM submissions WHERE id=2").get().content,'不知道該怎麼說，但還是想謝謝一直陪著我的你。');
- await writeFile(resolve(output,'report.json'),JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:8},null,2));console.log(JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:8}));
+ page.once('dialog',dialog=>dialog.accept());await page.locator('#close-editor').click();await idle();
+ await page.locator('#reload').click();await idle();
+ await page.getByRole('button',{name:'待發送',exact:true}).click();await idle();
+ page.once('dialog',dialog=>dialog.dismiss());await page.getByRole('button',{name:'刪除投稿 #1',exact:true}).click();await idle();
+ assert.equal(db.raw.prepare('SELECT count(*) n FROM studio_removals').get().n,0);
+ page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'刪除投稿 #1',exact:true}).click();await idle();
+ assert.equal(await page.getByRole('button',{name:'刪除投稿 #1',exact:true}).count(),0);
+ assert.equal(db.raw.prepare('SELECT count(*) n FROM studio_removals').get().n,1);
+ db.raw.exec("INSERT INTO submissions(id,content,status) VALUES(3,'可刪除的已核准投稿','approved')");
+ await page.getByRole('button',{name:'圖片草稿',exact:true}).click();await page.locator('#reload').click();await idle();
+ await page.setViewportSize({width:1280,height:900});await page.screenshot({path:resolve(output,'deletion-desktop.png'),fullPage:true});
+ await page.setViewportSize({width:390,height:844});await page.screenshot({path:resolve(output,'deletion-mobile.png'),fullPage:true});
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ await page.getByRole('button',{name:'刪除投稿 #3',exact:true}).focus();page.once('dialog',dialog=>dialog.accept());await page.keyboard.press('Enter');await idle();
+ assert.equal(db.raw.prepare('SELECT count(*) n FROM studio_removals').get().n,2);
+ assert.equal(db.raw.prepare('SELECT count(*) n FROM submissions').get().n,3);
+ assert.equal(db.raw.prepare('SELECT last_number FROM send_progress').get().last_number,109);
+ checks.push('approved and ready deletion: cancel, confirm, keyboard, mobile; originals and numbering preserved');
+ assert.equal(await page.locator('#number-settings').isVisible(),false);
+ // Owner UI fixture only; real session/CSRF/role enforcement is exercised by API tests.
+ await page.route('**/assets/admin-auth.js',async route=>route.fulfill({contentType:'text/javascript',body:(await readFile(resolve(frontend,'assets/admin-auth.js'),'utf8')).replace('role: "admin"','role: "owner"')}));
+ await page.reload();await idle();
+ await page.locator('#reload').click();await idle();await page.locator('#number-settings summary').click();
+ await page.locator('#last-number').fill('120');page.once('dialog',d=>d.dismiss());await page.locator('#save-number').click();await idle();
+ assert.equal(db.raw.prepare('SELECT last_number FROM send_progress').get().last_number,109);
+ await page.route('**/send/number',async route=>{const data=await increaseLastNumber(db.DB,route.request().postDataJSON(),{adminId:1,role:'owner'});await route.fulfill({json:{ok:true,data}});});
+ page.once('dialog',d=>d.accept());await page.locator('#save-number').click();await idle();
+ assert.equal(db.raw.prepare('SELECT last_number FROM send_progress').get().last_number,120);
+ assert.match(await page.locator('#send-progress').innerText(),/121/);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ await page.screenshot({path:resolve(output,'number-settings-mobile.png'),fullPage:true});
+ await page.setViewportSize({width:1280,height:900});await page.screenshot({path:resolve(output,'number-settings-desktop.png'),fullPage:true});
+ checks.push('owner number settings UI fixture: hidden for admin, cancellation, upward correction and next-number refresh');
+ await writeFile(resolve(output,'report.json'),JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:12},null,2));console.log(JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:12}));
 }finally{await browser.close();await new Promise(r=>server.close(r));db.close();}

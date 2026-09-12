@@ -7,6 +7,7 @@ import {graphemeLength} from '../../../frontend/assets/graphemes.js';
 import {crc32} from '../../../frontend/admin/studio/zip.js';
 import {createImageDraft,getImageDraft,saveImageDraft,listStudio,publishImageVersion,getDispatch,saveDispatch} from '../repositories/image-drafts.js';
 import {currentSendHandler} from './current-send.js';
+import {hasRemovals,isRemoved,removeStudioItem} from '../repositories/studio-removals.js';
 export const studioEnabled=env=>env.IMAGE_STUDIO_ENABLED==='true';
 const fail=(code,message,status=400)=>{throw new HttpError(status,code,message);};
 const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value);
@@ -45,7 +46,15 @@ export async function imageStudioHandler(request,env,principal,path){
   if(env.SINGLE_SEND_ENABLED==='true'&&path.includes('/dispatches')&&request.method!=='GET')fail('HISTORY_READ_ONLY','歷史草稿僅供讀取，請複製到本次發送。',409);
   if(path==='/api/admin/studio'){
     if(request.method!=='GET')return methodNotAllowed(['GET']);
-    return jsonResponse({ok:true,data:await listStudio(db,env.SINGLE_SEND_ENABLED==='true')});
+    const removalSchema=Boolean(await hasRemovals(db));
+    return jsonResponse({ok:true,data:{...await listStudio(db,env.SINGLE_SEND_ENABLED==='true',removalSchema),deletionEnabled:removalSchema&&env.STUDIO_DELETE_ENABLED==='true'}});
+  }
+  const removal=path.match(/^\/api\/admin\/studio\/items\/(\d+)$/);
+  if(removal){
+    if(request.method!=='DELETE')return methodNotAllowed(['DELETE']);
+    if(env.STUDIO_DELETE_ENABLED!=='true'||!await hasRemovals(db))fail('STUDIO_DELETE_DISABLED','刪除功能尚未啟用。',503);
+    const body=await parseJsonObject(request,{allowedKeys:['source','revision'],maxBytes:1024});
+    return jsonResponse({ok:true,data:await removeStudioItem(db,parsePositiveInteger(removal[1]),body,principal)});
   }
   let match=path.match(/^\/api\/admin\/studio\/images\/([^/]+)$/);
   if(match){
@@ -53,6 +62,7 @@ export async function imageStudioHandler(request,env,principal,path){
     if(!uuid(match[1]))fail('INVALID_ID','圖片編號錯誤。');
     const version=await db.prepare('SELECT object_key,draft_id FROM image_versions WHERE id=?').bind(match[1]).first();
     if(!version)fail('IMAGE_NOT_FOUND','圖片不存在。',404);
+    if(await hasRemovals(db)&&await isRemoved(db,version.draft_id))fail('IMAGE_NOT_FOUND','圖片已刪除。',404);
     if(env.SINGLE_SEND_ENABLED==='true'&&await db.prepare("SELECT 1 FROM send_records WHERE submission_id=? AND (purged_at IS NOT NULL OR julianday(expires_at)<=julianday('now'))").bind(version.draft_id).first())fail('IMAGE_NOT_FOUND','圖片保留期已過。',404);
     if(!env.STUDIO_IMAGES)fail('IMAGE_STORAGE_UNAVAILABLE','圖片儲存尚未設定。',503);
     const object=await env.STUDIO_IMAGES.get(version.object_key);if(!object)fail('IMAGE_NOT_FOUND','圖片無法讀取。',404);
@@ -61,6 +71,7 @@ export async function imageStudioHandler(request,env,principal,path){
   match=path.match(/^\/api\/admin\/studio\/drafts\/(\d+)(\/ready)?$/);
   if(match){
     const id=parsePositiveInteger(match[1]);
+    if(await hasRemovals(db)&&await isRemoved(db,id))fail('IMAGE_NOT_FOUND','圖片已刪除。',404);
     if(env.SINGLE_SEND_ENABLED==='true'){
       const locked=await db.prepare("SELECT 1 FROM send_records WHERE submission_id=? UNION SELECT 1 FROM send_items i JOIN send_batches b ON b.id=i.batch_id WHERE i.submission_id=? AND b.state='prepared'").bind(id,id).first();
       if(locked)fail('IMAGE_LOCKED','此圖片已鎖定或已確認發送。',409);

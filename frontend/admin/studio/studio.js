@@ -35,6 +35,15 @@ async function imageBlob(id){
 async function thumbnail(img,id){
   try{const url=URL.createObjectURL(await imageBlob(id));img.onload=img.onerror=()=>URL.revokeObjectURL(url);img.src=url;}catch{img.alt='圖片載入失敗，請重新整理。';}
 }
+function removalButton(row,source){
+  const b=button('刪除',async()=>{
+    if(!confirm(`確定刪除投稿 #${row.id} 的工作室項目？將從已核准投稿／圖片草稿及待發送移除，保留原始投稿與稽核紀錄。`)){say('已取消刪除。');return;}
+    await request('/items/'+row.id,{method:'DELETE',body:{source,revision:row.revision??0}});
+    selection.delete(row.version_id);await reload();say(`投稿 #${row.id} 的工作室項目已刪除。`);
+    requestAnimationFrame(()=>document.querySelector(`[data-tab="${tab}"]`).focus());
+  });
+  b.setAttribute('aria-label',`刪除投稿 #${row.id}`);return b;
+}
 function renderGallery(){
   const gallery=$('#gallery');gallery.replaceChildren();$('#compose').hidden=tab!=='ready';
   document.querySelectorAll('[data-tab]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.tab===tab)));
@@ -67,16 +76,22 @@ function renderGallery(){
         card.append(paragraph('此縮圖僅為預覽；正式檔請由本次發送產生。'));
       }else card.append(paragraph(row.text));
       card.append(paragraph(`${row.editor} · ${row.updated_at}`),button('編輯圖片',()=>openImage(row.id)));
+      if(listing.deletionEnabled)card.append(removalButton(row,tab==='ready'?'ready':'approved'));
     }
     gallery.append(card);
   }
   if(tab==='draft')for(const row of listing.approved){
-    const card=document.createElement('article');card.className='studio-card';card.append(paragraph(`已核准投稿 #${row.id}`),paragraph(row.content),button('建立圖片草稿',async()=>{await request('/drafts/'+row.id,{method:'POST'});await reload();await openImage(row.id);}));gallery.append(card);
+    const card=document.createElement('article');card.className='studio-card';card.append(paragraph(`已核准投稿 #${row.id}`),paragraph(row.content),button('建立圖片草稿',async()=>{await request('/drafts/'+row.id,{method:'POST'});await reload();await openImage(row.id);}));if(listing.deletionEnabled)card.append(removalButton(row,'approved'));gallery.append(card);
   }
   if(!gallery.children.length)gallery.append(paragraph('此區目前沒有項目。'));
   sync();
 }
 function sync(){
+  const canAdjust=adminAuth.identity()?.role==='owner';
+  $('#number-settings').hidden=!canAdjust||Boolean(doc||dispatch);
+  $('#last-number').min=sendState.last_number+1;
+  $('#last-number').disabled=busy||Boolean(sendState.batch);
+  $('#save-number').disabled=busy||Boolean(sendState.batch);
   $('#gallery').hidden=Boolean(doc||dispatch);$('#reload').hidden=Boolean(doc||dispatch);$('#compose').hidden=tab!=='ready'||Boolean(doc||dispatch);
   $('#compose').textContent=sendState.batch?'已有本次發送，請先完成或取消':`準備發送（${selection.size} / 10）`;$('#compose').disabled=busy||selection.size===0||Boolean(sendState.batch);
   if(doc&&assets){
@@ -233,6 +248,14 @@ $('#confirm-send').addEventListener('click',()=>run(async()=>{
 }));
 for(const id of ['close-editor','close-dispatch'])$('#'+id).addEventListener('click',()=>{if(!busy&&mayLeave())closePanels();});
 $('#reload').addEventListener('click',()=>run(async()=>{if(!mayLeave())return;closePanels();await reload();}));
+$('#save-number').addEventListener('click',()=>run(async()=>{
+ const lastNumber=Number($('#last-number').value);
+ if(!Number.isSafeInteger(lastNumber)||lastNumber<=sendState.last_number||lastNumber>1000000000)throw new Error('請輸入大於目前最後編號的整數（最大 1000000000）。');
+ if(sendState.batch)throw new Error('請先完成或取消本次發送。');
+ if(!confirm(`將最後編號從 #${sendState.last_number} 調高為 #${lastNumber}？\n下一張將從 #${lastNumber+1} 開始。略過的號碼不再使用，此操作不能往下還原；不代表已向 IG 發送。`)){say('已取消調整。');return;}
+ await request('/send/number',{method:'POST',body:{revision:sendState.revision,lastNumber}});
+ $('#last-number').value='';await reload();say(`最後編號已調高，下一張從 #${sendState.last_number+1} 開始。`);
+}));
 document.querySelectorAll('[data-tab]').forEach(el=>el.addEventListener('click',()=>run(()=>{if(!mayLeave())return;closePanels();tab=el.dataset.tab;renderGallery();say('');})));
 await run(async()=>{
   const session=await apiRequest('/api/auth/me',{headers:adminAuth.requestHeaders()});adminAuth.setSession(session);

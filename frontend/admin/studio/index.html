@@ -12,6 +12,13 @@
     <p id="studio-identity"></p>
     <nav aria-label="製圖流程"><button data-tab="draft">圖片草稿</button><button data-tab="ready">待發送</button><button data-tab="current">本次發送</button><button data-tab="records">已發送紀錄</button><button data-tab="dispatch">歷史草稿</button></nav>
     <p id="send-progress" class="field__hint"></p>
+    <details id="number-settings" hidden>
+      <summary>調整最後已發送編號（owner）</summary>
+      <label for="last-number">最後已發送編號</label>
+      <input id="last-number" type="number" min="1" max="1000000000" step="1" inputmode="numeric" aria-describedby="number-hint">
+      <p id="number-hint" class="field__hint">只能往上調整；下一張從新編號 +1 開始。略過的號碼不再使用，不會新增已發送紀錄。有本次發送時不可修改。</p>
+      <button id="save-number" type="button">確認調高編號</button>
+    </details>
     <p id="studio-status" role="status" aria-live="polite"></p>
     <button id="reload">重新整理</button>
     <section id="gallery" class="studio-grid" aria-label="圖片列表"></section>

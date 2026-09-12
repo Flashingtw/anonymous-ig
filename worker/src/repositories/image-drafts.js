@@ -44,13 +44,14 @@ export async function publishImageVersion(db,id,revision,key,principal){
   if(!result[0].results.length)throw conflict();
   return {draft:await getImageDraft(db,id),versionId:version};
 }
-export async function listStudio(db,singleSend=false){
+export async function listStudio(db,singleSend=false,removalSchema=false){
   const drafts=await db.prepare(`SELECT d.*,COALESCE(a.access_email,a.github_username,a.username,'本機管理員') AS editor,
     (SELECT id FROM image_versions v WHERE v.draft_id=d.id ORDER BY v.draft_revision DESC LIMIT 1) AS version_id
     FROM image_drafts d LEFT JOIN admins a ON a.id=d.editor_id ORDER BY d.updated_at DESC,d.id DESC`).all();
   const approved=await db.prepare("SELECT id,content FROM submissions WHERE status='approved' AND id NOT IN (SELECT id FROM image_drafts) ORDER BY id DESC").all();
   const dispatches=await db.prepare('SELECT id,caption,revision,updated_at FROM dispatch_drafts ORDER BY updated_at DESC').all();
   const sent=singleSend?new Set((await db.prepare('SELECT submission_id FROM send_records').all()).results.map(r=>r.submission_id)):new Set();
+  if(removalSchema)for(const row of (await db.prepare('SELECT submission_id FROM studio_removals').all()).results)sent.add(row.submission_id);
   return {drafts:drafts.results.filter(r=>!sent.has(r.id)).map(row=>({...row,layout:JSON.parse(row.layout)})),approved:approved.results.filter(r=>!sent.has(r.id)),dispatches:dispatches.results};
 }
 export async function getDispatch(db,id,singleSend=false){

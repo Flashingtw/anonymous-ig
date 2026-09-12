@@ -2,10 +2,27 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createTestDatabase} from './helpers/d1.js';
-import {currentSend,changeSend,attachFinal} from '../worker/src/repositories/current-send.js';
+import {currentSend,changeSend,attachFinal,increaseLastNumber} from '../worker/src/repositories/current-send.js';
 import {cleanupSentImages} from '../worker/src/repositories/send-cleanup.js';
 import {defaultLayout} from '../frontend/admin/studio/model.js';
 const principal={adminId:1};
+test('owner number adjustment is upward-only, CAS guarded, atomic and does not fabricate sends',async t=>{
+ const f=fixture();t.after(()=>f.close());const owner={adminId:1,role:'owner'};
+ const adjust=(lastNumber,revision=1,p=owner)=>increaseLastNumber(f.DB,{revision,lastNumber},p);
+ for(const n of [108,107,0,-1,1.5,'120',null,1000000001])await assert.rejects(()=>adjust(n));
+ for(const role of ['admin','moderator'])await assert.rejects(()=>adjust(120,1,{adminId:1,role}),e=>e.status===403);
+ f.raw.exec("CREATE TRIGGER fail_adjust BEFORE INSERT ON audit_logs WHEN NEW.action='send_number_adjust' BEGIN SELECT RAISE(ABORT,'audit failure'); END;");
+ await assert.rejects(()=>adjust(120),/audit failure/);assert.equal((await currentSend(f.DB)).last_number,108);f.raw.exec('DROP TRIGGER fail_adjust');
+ const results=await Promise.allSettled([adjust(120),adjust(130)]);assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+ let s=await currentSend(f.DB);assert.equal(s.last_number,120);assert.equal(s.revision,2);
+ await assert.rejects(()=>adjust(140,1));assert.equal(f.raw.prepare('SELECT count(*) n FROM send_records').get().n,0);
+ const audit=f.raw.prepare("SELECT metadata FROM audit_logs WHERE action='send_number_adjust'").get();assert.deepEqual(JSON.parse(audit.metadata),{previousNumber:108,lastNumber:120,manualAdjustment:true});
+ await f.command('save',{caption:'',items:[f.ids[0]]});s=await currentSend(f.DB);await assert.rejects(()=>adjust(140,s.revision));
+ await f.command('prepare');s=await currentSend(f.DB);assert.equal(s.batch.items[0].number,121);await assert.rejects(()=>adjust(140,s.revision));
+ await f.upload();await f.command('confirm',{count:1});s=await currentSend(f.DB);assert.equal(s.last_number,121);
+ await adjust(150,s.revision);assert.equal(f.raw.prepare('SELECT number FROM send_records').get().number,121);
+ assert.deepEqual(f.raw.prepare('PRAGMA foreign_key_check').all(),[]);
+});
 function fixture(){
  const d=createTestDatabase({images:true,singleSend:true});
  d.raw.exec("INSERT INTO admins(id,access_email,role) VALUES(1,'owner@example.test','owner'); INSERT INTO submissions(id,content,status) VALUES(1,'original one','approved'),(2,'original two','approved'),(3,'original three','approved');");

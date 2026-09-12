@@ -5,6 +5,11 @@
 .studio-page button:disabled { opacity:.5;cursor:not-allowed; }
 .studio-page button:focus-visible,.studio-page a:focus-visible,.studio-page canvas:focus-visible { outline:3px solid #ed6a36;outline-offset:3px; }
 .studio-page a { color:inherit; }
+#number-settings { border:1px solid #aaa18e;padding:14px;margin:16px 0;max-width:520px; }
+#number-settings summary { cursor:pointer;min-height:44px; }
+#number-settings label { display:block;margin:8px 0; }
+#number-settings input { box-sizing:border-box; }
+#number-settings summary:focus-visible { outline:3px solid #ed6a36;outline-offset:3px; }
 .studio-header,.studio-heading { display:flex;justify-content:space-between;align-items:center;gap:16px; }
 .studio-header h1 { font-size:28px;margin:10px 0; }
 .studio-header a { white-space:nowrap;flex-shrink:0; }

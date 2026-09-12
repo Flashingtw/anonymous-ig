@@ -18,9 +18,9 @@ function png(){
 }
 test('isolated workerd D1 batch and private R2 complete the image round-trip',async t=>{
  const bundle=await build({entryPoints:[new URL('../worker/src/index.js',import.meta.url).pathname.replace(/^\/([A-Z]:)/,'$1')],bundle:true,format:'esm',platform:'browser',write:false});
- const mf=new Miniflare(convertV4MiniflareOptions({modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-08-31',d1Databases:['DB'],r2Buckets:['STUDIO_IMAGES'],bindings:{APP_ENV:'development',ADMIN_AUTH_PROVIDER:'dev',DEV_ADMIN_MODE:'true',DEV_ADMIN_TOKEN:'isolated-local-runtime-test-token',IMAGE_STUDIO_ENABLED:'true',SINGLE_SEND_ENABLED:'true'}}));
+ const mf=new Miniflare(convertV4MiniflareOptions({modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-08-31',d1Databases:['DB'],r2Buckets:['STUDIO_IMAGES'],bindings:{APP_ENV:'development',ADMIN_AUTH_PROVIDER:'dev',DEV_ADMIN_MODE:'true',DEV_ADMIN_TOKEN:'isolated-local-runtime-test-token',IMAGE_STUDIO_ENABLED:'true',SINGLE_SEND_ENABLED:'true',STUDIO_DELETE_ENABLED:'true'}}));
  t.after(()=>mf.dispose());const db=await mf.getD1Database('DB');
- for(const name of ['0001_create_submissions','0002_create_admin_auth','0004_add_local_admin_auth','0005_add_access_email','0006_access_only_admins','0007_image_drafts','0008_single_dispatch'])await db.exec(readFileSync(new URL(`../migrations/${name}.sql`,import.meta.url),'utf8').replace(/^--.*$/gm,'').replace(/[\r\n]/g,' '));
+ for(const name of ['0001_create_submissions','0002_create_admin_auth','0004_add_local_admin_auth','0005_add_access_email','0006_access_only_admins','0007_image_drafts','0008_single_dispatch','0009_studio_removals'])await db.exec(readFileSync(new URL(`../migrations/${name}.sql`,import.meta.url),'utf8').replace(/^--.*$/gm,'').replace(/[\r\n]/g,' '));
  await db.prepare("INSERT INTO submissions(id,content) VALUES(1,'runtime draft')").run();
  const url='http://localhost/api/admin',headers={Authorization:'Bearer isolated-local-runtime-test-token'};
  assert.equal((await mf.dispatchFetch(url+'/submissions/1/approve',{method:'POST',headers})).status,200);
@@ -34,16 +34,23 @@ test('isolated workerd D1 batch and private R2 complete the image round-trip',as
  let s=await command('save',{revision:1,caption:'',items:[version]});s=await command('prepare',{revision:s.revision});
  const final=await mf.dispatchFetch(url+'/studio/send/image',{method:'POST',headers:{...headers,'Content-Type':'image/png','If-Match':String(s.revision),'X-Send-Generation':s.batch.generation,'X-Send-Position':'0'},body:png()});assert.equal(final.status,200);s=(await final.json()).data;
  const revision=s.revision;s=await command('confirm',{revision,count:1});assert.equal(s.last_number,109);
+ const remove=id=>mf.dispatchFetch(url+'/studio/items/'+id,{method:'DELETE',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({source:'approved',revision:0})});
+ await db.prepare("INSERT INTO submissions(id,content,status) VALUES(2,'remove locally','approved')").run();
+ assert.equal((await remove(2)).status,200);assert.equal((await remove(2)).status,409);
+ assert.equal((await remove(1)).status,409);
+ assert.equal(await db.prepare('SELECT count(*) n FROM studio_removals').first('n'),1);
+ assert.equal(await db.prepare('SELECT last_number FROM send_progress').first('last_number'),109);
  assert.equal((await mf.dispatchFetch(url+'/studio/send/confirm',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({revision,count:1})})).status,409);
  assert.deepEqual((await db.prepare('PRAGMA foreign_key_check').all()).results,[]);
 });
-async function setup(t,role='owner',singleSend=false){
- const db=createTestDatabase({images:true,singleSend});t.after(()=>db.close());
+async function setup(t,role='owner',singleSend=false,studioDelete=false){
+ const db=createTestDatabase({images:true,singleSend,studioDelete});t.after(()=>db.close());
  db.raw.exec("INSERT INTO admins(id,github_user_id,github_username,access_email,role) VALUES(1,'123','original-owner','owner@example.com','owner'); INSERT INTO submissions(id,content) VALUES(1,'原始投稿'),(2,'第二篇');");
  if(role!=='owner')db.raw.exec(`INSERT INTO admins(id,access_email,role) VALUES(2,'friend@example.com','${role}')`);
  const objects=new Map();
  const env={...accessEnv,DB:db.DB,APP_ENV:'production',ADMIN_AUTH_PROVIDERS:'access',ACCESS_AUTH_ENABLED:'true',LOCAL_AUTH_ENABLED:'false',SESSION_SECRET:'test-secret-more-than-thirty-two-characters',IMAGE_STUDIO_ENABLED:'true',STUDIO_IMAGES:{async put(key,value){objects.set(key,value);},async get(key){const body=objects.get(key);return body?{body}:null;}}};
  if(singleSend)env.SINGLE_SEND_ENABLED='true';
+ if(studioDelete)env.STUDIO_DELETE_ENABLED='true';
  const call=(path,options={},override={})=>handleApiRequest(new Request('https://admin.example.test'+path,options),{...env,...override},{accessJwks});
  const login=await call('/api/auth/access',{headers:{'Cf-Access-Jwt-Assertion':await accessToken({email:role==='owner'?'owner@example.com':'friend@example.com'})}});
  const cookie=login.headers.get('set-cookie').split(';')[0];
@@ -54,6 +61,67 @@ async function setup(t,role='owner',singleSend=false){
  const ready=async(id,revision)=>call(`/api/admin/studio/drafts/${id}/ready`,{method:'POST',headers:{...headers,'Content-Type':'image/png','If-Match':String(revision)},body:png()});
  return {db,env,objects,call,req,studio,ready,headers};
 }
+for(const role of ['owner','admin','moderator'])test(`${role} number adjustment endpoint enforces owner role and CSRF`,async t=>{
+ const {studio,call,headers}=await setup(t,role,true);
+ const path='/api/admin/studio/send/number',body={revision:1,lastNumber:120};
+ assert.equal((await call(path,{method:'POST'})).status,401);
+ assert.equal((await call(path,{method:'POST',headers:{Cookie:headers.Cookie}})).status,403);
+ assert.equal((await studio('/send/number','POST',body)).status,role==='owner'?200:403);
+ assert.equal((await (await studio('/send')).json()).data.last_number,role==='owner'?120:108);
+});
+for(const role of ['owner','admin','moderator'])test(`${role} studio deletion is authenticated, atomic, revision checked and preserves originals`,async t=>{
+ const {db,env,req,studio,ready,call,headers,objects}=await setup(t,role,true,true);
+ const body={source:'approved',revision:1};
+ assert.equal((await call('/api/admin/studio/items/1',{method:'DELETE'})).status,401);
+ assert.equal((await call('/api/admin/studio/items/1',{method:'DELETE',headers:{Cookie:headers.Cookie}})).status,403);
+ assert.equal((await studio('/items/1','DELETE',body)).status,409);
+ await req('/api/admin/submissions/1/approve','POST');
+ assert.equal((await studio('/items/1','DELETE',{...body,revision:9})).status,409);
+ assert.equal((await studio('/items/1','DELETE',{...body,source:'everything'})).status,400);
+ assert.equal((await studio('/items/1')).status,405);
+ env.STUDIO_DELETE_ENABLED='false';assert.equal((await studio('/items/1','DELETE',body)).status,503);env.STUDIO_DELETE_ENABLED='true';
+ db.raw.exec("CREATE TRIGGER fail_removal_audit BEFORE INSERT ON audit_logs WHEN NEW.action='studio_item_removed' BEGIN SELECT RAISE(ABORT,'audit failure'); END;");
+ assert.equal((await studio('/items/1','DELETE',body)).status,500);
+ assert.equal(db.raw.prepare('SELECT count(*) n FROM studio_removals').get().n,0);db.raw.exec('DROP TRIGGER fail_removal_audit');
+ assert.equal((await studio('/items/1','DELETE',body)).status,200);
+ assert.equal((await studio('/items/1','DELETE',body)).status,409);
+ for(const method of ['GET','POST','PUT'])assert.equal((await studio('/drafts/1',method,method==='PUT'?{}:undefined)).status,404);
+ await req('/api/admin/submissions/2/approve','POST');const version=(await (await ready(2,1)).json()).data.versionId;
+ const draft=(await (await studio('/drafts/2')).json()).data;
+ const removal={source:'ready',revision:draft.revision};
+ assert.equal((await studio('/items/2','DELETE',{...removal,source:'approved'})).status,409);
+ let send=(await (await studio('/send/save','POST',{revision:1,caption:'',items:[version]})).json()).data;
+ assert.equal((await studio('/items/2','DELETE',removal)).status,409);
+ send=(await (await studio('/send/prepare','POST',{revision:send.revision})).json()).data;
+ assert.equal((await studio('/items/2','DELETE',removal)).status,409);
+ await studio('/send/cancel','POST',{revision:send.revision});
+ assert.equal((await studio('/items/2','DELETE',removal)).status,200);
+ assert.equal((await studio('/images/'+version)).status,404);assert.equal(objects.size,1);
+ send=(await (await studio('/send')).json()).data;
+ assert.equal((await studio('/send/save','POST',{revision:send.revision,caption:'',items:[version]})).status,409);
+ assert.equal((await (await studio('/send')).json()).data.last_number,108);
+ env.STUDIO_DELETE_ENABLED='false';const listing=(await (await studio('')).json()).data;
+ assert.deepEqual(listing.drafts,[]);assert.deepEqual(listing.approved,[]);assert.equal(listing.deletionEnabled,false);
+ assert.equal(db.raw.prepare('SELECT count(*) n FROM submissions').get().n,2);
+ assert.equal(db.raw.prepare("SELECT count(*) n FROM audit_logs WHERE action='studio_item_removed'").get().n,2);
+ assert.deepEqual(db.raw.prepare('PRAGMA foreign_key_check').all(),[]);
+ db.raw.exec("INSERT INTO admins(access_email,role) VALUES('backup@example.com','owner'); UPDATE admins SET enabled=0 WHERE id="+(role==='owner'?1:2));
+ assert.equal((await studio('/items/2','DELETE',removal)).status,401);
+});
+
+test('0009 preserves populated 0008 data and removes approved items without drafts',async t=>{
+ const {db,studio,env}=await setup(t,'owner',true);
+ db.raw.exec("UPDATE submissions SET status='approved'; INSERT INTO audit_logs(admin_id,action,submission_id) VALUES(1,'approve_submission',1)");
+ const tables=db.raw.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(r=>r.name);
+ const snapshot=()=>tables.map(table=>db.raw.prepare(`SELECT * FROM ${table}`).all());const before=snapshot();
+ db.raw.exec(readFileSync(new URL('../migrations/0009_studio_removals.sql',import.meta.url),'utf8'));
+ assert.deepEqual(snapshot(),before);env.STUDIO_DELETE_ENABLED='true';
+ assert.equal((await studio('/items/1','DELETE',{source:'approved',revision:0})).status,200);
+ assert.equal((await studio('/drafts/1','POST')).status,404);
+ assert.throws(()=>db.raw.exec("INSERT INTO image_drafts(id,text,layout) VALUES(1,'x','{}')"));
+ assert.throws(()=>db.raw.exec('DELETE FROM studio_removals'));
+ assert.deepEqual(db.raw.prepare('PRAGMA foreign_key_check').all(),[]);
+});
 for(const role of ['owner','admin','moderator'])test(`${role} single-send routes enforce sessions, CSRF, final completeness and manual confirmation`,async t=>{
  const {db,req,studio,ready,call,headers,env}=await setup(t,role,true);
  await req('/api/admin/submissions/1/approve','POST');const version=(await (await ready(1,1)).json()).data.versionId;
