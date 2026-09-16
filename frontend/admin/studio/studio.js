@@ -15,27 +15,33 @@ let assetLoading;
 async function getAssets(){if(assets)return assets;if(!assetLoading)assetLoading=loadStudioAssets().then(value=>assets=value).finally(()=>{assetLoading=null;});return assetLoading;}
 const canvas=$('#image-canvas'),ctx=canvas.getContext('2d');
 const say=text=>{$('#studio-status').textContent=text;};
-const imageShare=createImageShare();let shareUrls=[];
-function clearShare(){imageShare.clear();shareUrls.forEach(url=>URL.revokeObjectURL(url));shareUrls=[];$('#share-panel').hidden=true;$('#share-previews').replaceChildren();}
-async function prepareShare(items,generation){
- clearShare();
- if(!await imageShare.prepare(items,item=>finalBlob(item.number,generation)))return;
- const supported=imageShare.supported();$('#share-panel').hidden=false;$('#open-share').hidden=!supported;
- $('#share-hint').textContent=supported?'圖片已準備。點「開啟分享選單」，在 iPhone 選擇「儲存影像」。選項依系統而定。':'此瀏覽器不支援這組圖片分享。可返回逐張分享，或使用下方下載／長按圖片儲存；儲存位置依系統而定。';
- for(const file of imageShare.files()){
-  const card=document.createElement('article');card.className='studio-card';const img=document.createElement('img'),url=URL.createObjectURL(file);shareUrls.push(url);img.src=url;img.alt=file.name;
-  card.append(img,paragraph(file.name),button('下載 PNG',()=>download(file,file.name)));$('#share-previews').append(card);
- }
- say('圖片已準備，尚未存入相簿或發送。');$('#share-panel').scrollIntoView({behavior:'smooth'});
- requestAnimationFrame(()=>$(supported?'#open-share':'#close-share').focus());
+const imageShare=createImageShare();let shareUrls=[],outputEpoch=0,outputLoading=null,outputReady=false,outputError=false;
+const singleFiles=new Map(),recordErrors=new Set();
+function clearShare(){outputEpoch++;imageShare.clear();singleFiles.clear();recordErrors.clear();shareUrls.forEach(url=>URL.revokeObjectURL(url));shareUrls=[];outputLoading=null;outputReady=false;outputError=false;}
+function canShareFiles(files){try{return files.length>0&&typeof navigator.share==='function'&&navigator.canShare?.({files})===true;}catch{return false;}}
+function saveFiles(files){
+ if(busy||!files.length)return;
+ if(!canShareFiles(files)){if(files.length===1)download(files[0],files[0].name);return;}
+ let operation;try{operation=navigator.share({files});}catch(error){operation=Promise.reject(error);}
+ void run(async()=>{try{await operation;say('');}catch(error){if(error.name==='AbortError')say('');else throw new Error('分享失敗，請重試或下載 ZIP。');}});
 }
-$('#close-share').addEventListener('click',()=>{if(!busy)clearShare();});
-$('#open-share').addEventListener('click',()=>{
- if(busy)return;
- // Invoke synchronously within this click, before network work or an await.
- const operation=imageShare.share();
- void run(async()=>{try{await operation;say('分享操作已完成；不代表已存入相簿或已發送。');}catch(error){if(error.name==='AbortError')say('已取消分享。');else throw new Error('分享失敗，請重試，或使用下載／長按圖片儲存。');}});
-});
+function displayFinal(img,file){const url=URL.createObjectURL(file);shareUrls.push(url);img.src=url;}
+function singleSave(number){const b=document.createElement('button');b.type='button';b.dataset.saveNumber=number;b.textContent='載入中…';b.disabled=true;b.addEventListener('click',()=>{if(recordErrors.has(number)){void run(()=>loadRecord(number,b.parentElement));return;}const file=singleFiles.get(number);if(file)saveFiles([file]);});return b;}
+async function loadRecord(number,card){
+ const epoch=outputEpoch;recordErrors.delete(number);sync();
+ try{const blob=await finalBlob(number);if(epoch!==outputEpoch||!card.isConnected)return;const file=new File([blob],`daan-${number}.png`,{type:'image/png'});singleFiles.set(number,file);displayFinal(card.querySelector('img'),file);}
+ catch{if(epoch===outputEpoch)recordErrors.add(number);}finally{if(epoch===outputEpoch)sync();}
+}
+async function loadFinalFiles(){
+ const epoch=outputEpoch,items=dispatch.items.filter(i=>!i.confirmed),generation=dispatch.generation;
+ outputError=false;
+ try{
+  if(!await imageShare.prepare(items,item=>finalBlob(item.number,generation))||epoch!==outputEpoch)return;
+  for(const [index,file]of imageShare.files().entries()){singleFiles.set(items[index].number,file);const img=document.querySelector(`[data-final-number="${items[index].number}"]`);if(img)displayFinal(img,file);}
+  outputReady=true;say('');
+ }catch{if(epoch===outputEpoch){outputError=true;say('圖片載入失敗，請重試。');}}
+ finally{if(epoch===outputEpoch){outputLoading=null;sync();}}
+}
 window.addEventListener('pagehide',clearShare);
 const button=(text,action)=>{const b=document.createElement('button');b.type='button';b.textContent=text;b.addEventListener('click',()=>run(action));return b;};
 const paragraph=text=>{const p=document.createElement('p');p.textContent=text;return p;};
@@ -49,7 +55,7 @@ async function run(action){
 function mayLeave(){return !(dirty||dispatchDirty)||confirm('有尚未保存的修改，確定離開並捨棄？');}
 window.addEventListener('beforeunload',event=>{if(dirty||dispatchDirty){event.preventDefault();event.returnValue='';}});
 document.querySelector('.studio-header a').addEventListener('click',event=>{if(!mayLeave())event.preventDefault();});
-function closePanels(){clearShare();doc=null;dispatch=null;dirty=false;dispatchDirty=false;$('#editor').hidden=true;$('#dispatch-editor').hidden=true;sync();}
+function closePanels(){clearShare();doc=null;dispatch=null;dirty=false;dispatchDirty=false;$('#editor').hidden=true;$('#dispatch-editor').hidden=true;$('#dispatch-items').replaceChildren();sync();}
 async function reload(){clearShare();listing=await request('');sendState=await request('/send');records=await request('/send/records');$('#send-progress').textContent=`最後已確認 #${sendState.last_number} · 下一張 #${sendState.last_number+1} · 保存／下載不占號`;renderGallery();say('已更新。');}
 async function imageBlob(id){
   const r=await fetch(base+'/images/'+id,{credentials:'include',headers:adminAuth.requestHeaders()});
@@ -68,6 +74,7 @@ function removalButton(row,source){
   b.setAttribute('aria-label',`刪除投稿 #${row.id}`);return b;
 }
 function renderGallery(){
+  clearShare();
   const gallery=$('#gallery');gallery.replaceChildren();$('#compose').hidden=tab!=='ready';
   document.querySelectorAll('[data-tab]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.tab===tab)));
   if(tab==='current'){
@@ -77,9 +84,9 @@ function renderGallery(){
   }
   if(tab==='records'){
     for(const row of records){const card=document.createElement('article');card.className='studio-card';card.append(paragraph(`#${row.number} · 投稿 #${row.submission_id}`),paragraph(`${row.confirmer??'管理員'} · ${row.confirmed_at} · 人工確認（未向 IG 驗證）`));
-      if(!row.purged_at&&Date.parse(row.expires_at)>Date.now())card.append(button('下載最終 PNG',async()=>download(await finalBlob(row.number),`daan-${row.number}.png`)));else card.append(paragraph('七天保留期已結束。'));
-      if(!row.purged_at&&Date.parse(row.expires_at)>Date.now())card.append(button('準備圖片（儲存／分享）',()=>prepareShare([row])));
+      if(!row.purged_at&&Date.parse(row.expires_at)>Date.now()){const img=document.createElement('img');img.alt=`已發送 #${row.number}`;card.append(img,singleSave(row.number));}else card.append(paragraph('七天保留期已結束。'));
       gallery.append(card);
+      if(card.querySelector('img'))void loadRecord(row.number,card);
     }if(!records.length)gallery.append(paragraph('尚無已確認紀錄。'));
     if(records.length&&records.length%100===0)gallery.append(button('載入更早紀錄',async()=>{const more=await request('/send/records?before='+records.at(-1).number);records.push(...more);renderGallery();if(!more.length)say('沒有更早紀錄。');}));sync();return;
   }
@@ -111,6 +118,14 @@ function renderGallery(){
   sync();
 }
 function sync(){
+  const finalComplete=dispatch&&!dispatch.historical&&dispatch.state==='prepared'&&dispatch.items.filter(i=>!i.confirmed).every(i=>i.object_key);
+  $('#generate-images').hidden=!dispatch||Boolean(dispatch.historical)||outputReady;
+  $('#generate-images').disabled=busy||Boolean(outputLoading);
+  $('#generate-images').textContent=outputError?'重試':outputLoading?'載入圖片中…':finalComplete?'載入圖片':'產生圖片';
+  $('#save-phone').hidden=!outputReady||!imageShare.supported();$('#save-phone').disabled=busy;
+  $('#download-dispatch').hidden=!outputReady;$('#download-dispatch').disabled=busy;
+  $('#output-error').textContent=outputError?'圖片尚未全部載入，請重試。':outputReady&&!imageShare.supported()?'此瀏覽器不支援整組分享，請逐張儲存或下載 ZIP。':'';
+  document.querySelectorAll('[data-save-number]').forEach(b=>{const n=Number(b.dataset.saveNumber),file=singleFiles.get(n);b.disabled=busy||(!file&&!recordErrors.has(n));b.textContent=recordErrors.has(n)?'重試':file?(canShareFiles([file])?'儲存此張':'下載 PNG'):'載入中…';});
   const canAdjust=adminAuth.identity()?.role==='owner';
   $('#number-settings').hidden=!canAdjust||Boolean(doc||dispatch);
   $('#last-number').min=sendState.last_number+1;
@@ -203,7 +218,7 @@ async function numberedPreview(img,item,number){
 }
 async function openDispatch(id){if(!mayLeave())return;const data=await request('/dispatches/'+id);closePanels();dispatch={...data,historical:true};showDispatch();}
 function showDispatch(){
-  clearShare();$('#prepare-share').hidden=Boolean(dispatch.historical);
+  clearShare();
   if(!dispatch.historical&&dispatch.state==='editing')dispatch.caption=syncDefaultCaption(dispatch.caption,dispatch.items.map((item,index)=>sendState.last_number+index+1));
   $('#dispatch-editor').hidden=false;$('#caption').value=dispatch.caption;const list=$('#dispatch-items');list.replaceChildren();
   const historical=dispatch.historical,locked=dispatch.state==='prepared',remaining=dispatch.items.filter(i=>!i.confirmed),complete=locked&&remaining.every(i=>i.object_key);
@@ -211,17 +226,15 @@ function showDispatch(){
   $('#send-stage').textContent=historical?'不占號；只能複製到空白的本次發送。':locked?'順序與號碼已鎖定。下載不等於發送；請手動上傳後確認。':'預覽連號，尚未占號；準備後不可直接編輯。';
   $('#caption').readOnly=Boolean(locked||historical);
   $('#save-dispatch').hidden=locked;$('#save-dispatch').textContent=historical?'複製到本次發送':'保存本次發送';
-  $('#download-dispatch').hidden=Boolean(historical);$('#download-dispatch').textContent=complete?'下載整組 ZIP':'產生最終圖片並下載';
   $('#reset-send').hidden=!locked||dispatch.items.some(i=>i.confirmed);$('#cancel-send').hidden=historical||!dispatch.id;
   $('#confirm-controls').hidden=!complete;$('#confirm-count').max=remaining.length;
   dispatch.items.forEach((item,index)=>{
     const li=document.createElement('li'),img=document.createElement('img'),id=item.submission_id??item.draft_id,number=item.number??sendState.last_number+index+1;img.alt=`第 ${index+1} 張，投稿 #${id}，編號 ${number}`;
-    if(complete&&item.object_key)void finalBlob(number,dispatch.generation).then(blob=>{const url=URL.createObjectURL(blob);img.onload=img.onerror=()=>URL.revokeObjectURL(url);img.src=url;}).catch(()=>{img.alt='圖片無法讀取。';});
+    if(complete&&!item.confirmed)img.dataset.finalNumber=number;
     else if(!historical&&item.layout)void numberedPreview(img,item,number);
     else if(item.version_id)void thumbnail(img,item.version_id);
     li.append(img,paragraph(`${index+1}. 投稿 #${id} · ${historical?'歷史預覽':`#${number}${locked?'（鎖定）':'（預覽）'}`}${item.confirmed?' · 已確認':''}`));
-    if(complete&&!item.confirmed)li.append(button('下載此張 PNG',async()=>download(await finalBlob(number,dispatch.generation),`daan-${number}.png`)));
-    if(complete&&!item.confirmed)li.append(button('準備此張（儲存／分享）',()=>prepareShare([item],dispatch.generation)));
+    if(complete&&!item.confirmed)li.append(singleSave(number));
     if(locked||historical){list.append(li);return;}
     for(const [label,delta]of [['往前',-1],['往後',1]]){
       const b=button(label,()=>{const next=index+delta;[dispatch.items[index],dispatch.items[next]]=[dispatch.items[next],dispatch.items[index]];dispatchDirty=true;showDispatch();say('順序已調整，請保存。');});b.disabled=index+delta<0||index+delta>=dispatch.items.length;li.append(b);
@@ -229,7 +242,7 @@ function showDispatch(){
     li.append(button('移除此張',()=>{dispatch.items.splice(index,1);dispatchDirty=true;showDispatch();say('已移除，請保存。');}));
     if(item.latest_version_id&&item.latest_version_id!==item.version_id)li.append(button('換成最新圖片',()=>{if(dispatch.items.some(i=>i.version_id===item.latest_version_id))throw new Error('此圖片已在組內。');item.version_id=item.latest_version_id;if(item.latest_document){item.text=item.latest_document.text;item.layout=structuredClone(item.latest_document.layout);}dispatchDirty=true;showDispatch();say('已換成最新版本，請保存。');}));
     list.append(li);
-  });sync();
+  });if(complete&&!historical)outputLoading=loadFinalFiles();sync();
 }
 async function saveDispatch(){
   const items=dispatch.items.map(i=>i.version_id);
@@ -250,23 +263,26 @@ async function prepareFinalImages(){
   clearShare();
   if(dispatchDirty||!dispatch.id)await saveDispatch();
   if(dispatch.state==='editing')sendState=await request('/send/prepare',{method:'POST',body:{revision:sendState.revision}});
-  dispatch=structuredClone(sendState.batch);showDispatch();
-  if(!assets)await ensureAssets();
+  dispatch=structuredClone(sendState.batch);
+  if(dispatch.items.some(i=>!i.confirmed&&!i.object_key)&&!assets)await ensureAssets();
   for(const item of dispatch.items.filter(i=>!i.confirmed&&!i.object_key)){
+    say(`產生圖片 #${item.number}…`);
     const layout=structuredClone(item.layout);layout.number.label=String(item.number);
     const png=await exportPng(assets,{id:item.submission_id,text:item.text,layout});
     const response=await fetch(base+'/send/image',{method:'POST',credentials:'include',headers:{...adminAuth.requestHeaders({mutation:true}),'Content-Type':'image/png','If-Match':String(sendState.revision),'X-Send-Generation':sendState.batch.generation,'X-Send-Position':String(item.position)},body:png});
     const payload=await response.json();if(!response.ok)throw new Error(payload.error?.message??'產圖保存失敗；可重新載入後重試，不會占號。');sendState=payload.data;
   }
   dispatch=structuredClone(sendState.batch);showDispatch();
+  await outputLoading;
 }
-$('#prepare-share').addEventListener('click',()=>run(async()=>{
- await prepareFinalImages();await prepareShare(dispatch.items.filter(i=>!i.confirmed),dispatch.generation);
+$('#generate-images').addEventListener('click',()=>run(async()=>{
+ try{await prepareFinalImages();if(outputReady)say('');}catch(error){outputError=true;throw error;}
 }));
+$('#save-phone').addEventListener('click',()=>saveFiles(imageShare.files()));
 $('#download-dispatch').addEventListener('click',()=>run(async()=>{
-  await prepareFinalImages();
+  if(!outputReady)throw new Error('圖片尚未全部載入。');
   const files=[];
-  for(const item of dispatch.items.filter(i=>!i.confirmed))files.push([`${String(item.position+1).padStart(2,'0')}-daan-${item.number}.png`,new Uint8Array(await (await finalBlob(item.number,dispatch.generation)).arrayBuffer())]);
+  for(const item of dispatch.items.filter(i=>!i.confirmed))files.push([`${String(item.position+1).padStart(2,'0')}-daan-${item.number}.png`,new Uint8Array(await singleFiles.get(item.number).arrayBuffer())]);
   files.push(['caption.txt',dispatch.caption]);download(makeZip(files),`daan-dispatch-${dispatch.id}.zip`);say('已下載；未發送到 IG。');
 }));
 for(const command of ['reset','cancel'])$('#'+command+'-send').addEventListener('click',()=>run(async()=>{

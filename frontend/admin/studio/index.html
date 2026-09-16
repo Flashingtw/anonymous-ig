@@ -20,13 +20,6 @@
       <button id="save-number" type="button">確認調高編號</button>
     </details>
     <p id="studio-status" role="status" aria-live="polite"></p>
-    <section id="share-panel" class="studio-paper" hidden aria-labelledby="share-title">
-      <h2 id="share-title">儲存／分享圖片</h2>
-      <p id="share-hint" role="status"></p>
-      <button id="open-share" type="button">開啟分享選單</button>
-      <button id="close-share" type="button">關閉分享</button>
-      <div id="share-previews" class="studio-grid"></div>
-    </section>
     <button id="reload">重新整理</button>
     <section id="gallery" class="studio-grid" aria-label="圖片列表"></section>
     <button id="compose" hidden>準備發送</button>
@@ -57,7 +50,9 @@
       <p id="send-stage" role="status"></p>
       <ol id="dispatch-items"></ol>
       <label for="caption">貼文說明</label><textarea id="caption" rows="5" placeholder="這組圖片的貼文說明⋯"></textarea><p id="caption-count">0 / 2000</p>
-      <div class="studio-actions"><button id="save-dispatch">保存本次發送</button><button id="download-dispatch">產生最終圖片並下載</button><button id="prepare-share">準備整組圖片（儲存／分享）</button><button id="reset-send">取消準備並返回編輯</button><button id="cancel-send">取消未發送項目</button></div>
+      <div class="studio-actions"><button id="generate-images">產生圖片</button><button id="save-phone" hidden>儲存到手機</button><button id="download-dispatch" class="secondary-action" hidden>下載 ZIP</button></div>
+      <p id="output-error" role="status"></p>
+      <div class="studio-actions secondary-actions"><button id="save-dispatch">保存本次發送</button><button id="reset-send">返回修改</button><button id="cancel-send">取消本次發送</button></div>
       <div id="confirm-controls" hidden><label for="confirm-count">確認尚未完成的前幾張<input id="confirm-count" type="number" min="1" value="1"></label><button id="confirm-send">確認已手動發送</button><p class="field__hint">若 IG 結果不確定，先人工核對。不可跳過中間圖片；確認後不回退編號。</p></div>
     </section>
   </main>
