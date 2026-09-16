@@ -6,6 +6,7 @@ import {WIDTH,HEIGHT,validItems,numberLabel} from './model.js';
 import {makeZip} from './zip.js';
 import {snapPosition} from './alignment.js';
 import {defaultCaption,syncDefaultCaption} from './caption.js';
+import {createImageShare} from './share.js';
 const $=selector=>document.querySelector(selector);
 const base='/api/admin/studio';
 let tab='draft',listing={drafts:[],approved:[],dispatches:[]},sendState={last_number:108,revision:1,batch:null},records=[],assets,doc,dispatch,selected='body',dirty=false,dispatchDirty=false,busy=false,drag;
@@ -14,6 +15,28 @@ let assetLoading;
 async function getAssets(){if(assets)return assets;if(!assetLoading)assetLoading=loadStudioAssets().then(value=>assets=value).finally(()=>{assetLoading=null;});return assetLoading;}
 const canvas=$('#image-canvas'),ctx=canvas.getContext('2d');
 const say=text=>{$('#studio-status').textContent=text;};
+const imageShare=createImageShare();let shareUrls=[];
+function clearShare(){imageShare.clear();shareUrls.forEach(url=>URL.revokeObjectURL(url));shareUrls=[];$('#share-panel').hidden=true;$('#share-previews').replaceChildren();}
+async function prepareShare(items,generation){
+ clearShare();
+ if(!await imageShare.prepare(items,item=>finalBlob(item.number,generation)))return;
+ const supported=imageShare.supported();$('#share-panel').hidden=false;$('#open-share').hidden=!supported;
+ $('#share-hint').textContent=supported?'圖片已準備。點「開啟分享選單」，在 iPhone 選擇「儲存影像」。選項依系統而定。':'此瀏覽器不支援這組圖片分享。可返回逐張分享，或使用下方下載／長按圖片儲存；儲存位置依系統而定。';
+ for(const file of imageShare.files()){
+  const card=document.createElement('article');card.className='studio-card';const img=document.createElement('img'),url=URL.createObjectURL(file);shareUrls.push(url);img.src=url;img.alt=file.name;
+  card.append(img,paragraph(file.name),button('下載 PNG',()=>download(file,file.name)));$('#share-previews').append(card);
+ }
+ say('圖片已準備，尚未存入相簿或發送。');$('#share-panel').scrollIntoView({behavior:'smooth'});
+ requestAnimationFrame(()=>$(supported?'#open-share':'#close-share').focus());
+}
+$('#close-share').addEventListener('click',()=>{if(!busy)clearShare();});
+$('#open-share').addEventListener('click',()=>{
+ if(busy)return;
+ // Invoke synchronously within this click, before network work or an await.
+ const operation=imageShare.share();
+ void run(async()=>{try{await operation;say('分享操作已完成；不代表已存入相簿或已發送。');}catch(error){if(error.name==='AbortError')say('已取消分享。');else throw new Error('分享失敗，請重試，或使用下載／長按圖片儲存。');}});
+});
+window.addEventListener('pagehide',clearShare);
 const button=(text,action)=>{const b=document.createElement('button');b.type='button';b.textContent=text;b.addEventListener('click',()=>run(action));return b;};
 const paragraph=text=>{const p=document.createElement('p');p.textContent=text;return p;};
 const request=(path,{method='GET',body}={})=>apiRequest(base+path,{method,headers:{...adminAuth.requestHeaders({mutation:method!=='GET'}),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
@@ -26,8 +49,8 @@ async function run(action){
 function mayLeave(){return !(dirty||dispatchDirty)||confirm('有尚未保存的修改，確定離開並捨棄？');}
 window.addEventListener('beforeunload',event=>{if(dirty||dispatchDirty){event.preventDefault();event.returnValue='';}});
 document.querySelector('.studio-header a').addEventListener('click',event=>{if(!mayLeave())event.preventDefault();});
-function closePanels(){doc=null;dispatch=null;dirty=false;dispatchDirty=false;$('#editor').hidden=true;$('#dispatch-editor').hidden=true;sync();}
-async function reload(){listing=await request('');sendState=await request('/send');records=await request('/send/records');$('#send-progress').textContent=`最後已確認 #${sendState.last_number} · 下一張 #${sendState.last_number+1} · 保存／下載不占號`;renderGallery();say('已更新。');}
+function closePanels(){clearShare();doc=null;dispatch=null;dirty=false;dispatchDirty=false;$('#editor').hidden=true;$('#dispatch-editor').hidden=true;sync();}
+async function reload(){clearShare();listing=await request('');sendState=await request('/send');records=await request('/send/records');$('#send-progress').textContent=`最後已確認 #${sendState.last_number} · 下一張 #${sendState.last_number+1} · 保存／下載不占號`;renderGallery();say('已更新。');}
 async function imageBlob(id){
   const r=await fetch(base+'/images/'+id,{credentials:'include',headers:adminAuth.requestHeaders()});
   if(!r.ok)throw new Error('無法讀取圖片，請確認登入仍有效後重試。');return r.blob();
@@ -55,6 +78,7 @@ function renderGallery(){
   if(tab==='records'){
     for(const row of records){const card=document.createElement('article');card.className='studio-card';card.append(paragraph(`#${row.number} · 投稿 #${row.submission_id}`),paragraph(`${row.confirmer??'管理員'} · ${row.confirmed_at} · 人工確認（未向 IG 驗證）`));
       if(!row.purged_at&&Date.parse(row.expires_at)>Date.now())card.append(button('下載最終 PNG',async()=>download(await finalBlob(row.number),`daan-${row.number}.png`)));else card.append(paragraph('七天保留期已結束。'));
+      if(!row.purged_at&&Date.parse(row.expires_at)>Date.now())card.append(button('準備圖片（儲存／分享）',()=>prepareShare([row])));
       gallery.append(card);
     }if(!records.length)gallery.append(paragraph('尚無已確認紀錄。'));
     if(records.length&&records.length%100===0)gallery.append(button('載入更早紀錄',async()=>{const more=await request('/send/records?before='+records.at(-1).number);records.push(...more);renderGallery();if(!more.length)say('沒有更早紀錄。');}));sync();return;
@@ -179,6 +203,7 @@ async function numberedPreview(img,item,number){
 }
 async function openDispatch(id){if(!mayLeave())return;const data=await request('/dispatches/'+id);closePanels();dispatch={...data,historical:true};showDispatch();}
 function showDispatch(){
+  clearShare();$('#prepare-share').hidden=Boolean(dispatch.historical);
   if(!dispatch.historical&&dispatch.state==='editing')dispatch.caption=syncDefaultCaption(dispatch.caption,dispatch.items.map((item,index)=>sendState.last_number+index+1));
   $('#dispatch-editor').hidden=false;$('#caption').value=dispatch.caption;const list=$('#dispatch-items');list.replaceChildren();
   const historical=dispatch.historical,locked=dispatch.state==='prepared',remaining=dispatch.items.filter(i=>!i.confirmed),complete=locked&&remaining.every(i=>i.object_key);
@@ -196,6 +221,7 @@ function showDispatch(){
     else if(item.version_id)void thumbnail(img,item.version_id);
     li.append(img,paragraph(`${index+1}. 投稿 #${id} · ${historical?'歷史預覽':`#${number}${locked?'（鎖定）':'（預覽）'}`}${item.confirmed?' · 已確認':''}`));
     if(complete&&!item.confirmed)li.append(button('下載此張 PNG',async()=>download(await finalBlob(number,dispatch.generation),`daan-${number}.png`)));
+    if(complete&&!item.confirmed)li.append(button('準備此張（儲存／分享）',()=>prepareShare([item],dispatch.generation)));
     if(locked||historical){list.append(li);return;}
     for(const [label,delta]of [['往前',-1],['往後',1]]){
       const b=button(label,()=>{const next=index+delta;[dispatch.items[index],dispatch.items[next]]=[dispatch.items[next],dispatch.items[index]];dispatchDirty=true;showDispatch();say('順序已調整，請保存。');});b.disabled=index+delta<0||index+delta>=dispatch.items.length;li.append(b);
@@ -220,7 +246,8 @@ $('#save-dispatch').addEventListener('click',()=>run(async()=>{
   await saveDispatch();closePanels();selection.clear();tab='ready';await reload();
   say('本次發送已保存，未發布到 IG。');
 }));
-$('#download-dispatch').addEventListener('click',()=>run(async()=>{
+async function prepareFinalImages(){
+  clearShare();
   if(dispatchDirty||!dispatch.id)await saveDispatch();
   if(dispatch.state==='editing')sendState=await request('/send/prepare',{method:'POST',body:{revision:sendState.revision}});
   dispatch=structuredClone(sendState.batch);showDispatch();
@@ -232,6 +259,12 @@ $('#download-dispatch').addEventListener('click',()=>run(async()=>{
     const payload=await response.json();if(!response.ok)throw new Error(payload.error?.message??'產圖保存失敗；可重新載入後重試，不會占號。');sendState=payload.data;
   }
   dispatch=structuredClone(sendState.batch);showDispatch();
+}
+$('#prepare-share').addEventListener('click',()=>run(async()=>{
+ await prepareFinalImages();await prepareShare(dispatch.items.filter(i=>!i.confirmed),dispatch.generation);
+}));
+$('#download-dispatch').addEventListener('click',()=>run(async()=>{
+  await prepareFinalImages();
   const files=[];
   for(const item of dispatch.items.filter(i=>!i.confirmed))files.push([`${String(item.position+1).padStart(2,'0')}-daan-${item.number}.png`,new Uint8Array(await (await finalBlob(item.number,dispatch.generation)).arrayBuffer())]);
   files.push(['caption.txt',dispatch.caption]);download(makeZip(files),`daan-dispatch-${dispatch.id}.zip`);say('已下載；未發送到 IG。');

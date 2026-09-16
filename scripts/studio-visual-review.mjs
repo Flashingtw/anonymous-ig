@@ -86,7 +86,7 @@ try{
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:resolve(output,'ready-mobile.png'),fullPage:true});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.setViewportSize({width:1440,height:1050});
  for(const checkbox of await page.getByRole('checkbox').all())await checkbox.check();await page.locator('#compose').click();await idle();
- assert.match(await page.locator('#caption').inputValue(),/^🔒\n日期📆\n\d{4}\/\d{2}\/\d{2} - 星期[日一二三四五六]\n\n🔥匿名🔥\n#109\n#110\n\n⭐️規則說明在置頂！⭐️$/);
+ assert.match(await page.locator('#caption').inputValue(),/^🔒\n日期📆\n\d{4}\/\d{2}\/\d{2} - (?:Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\n\n🔥匿名🔥\n#109\n#110\n\n⭐️規則說明在置頂！⭐️$/);
  await page.getByRole('button',{name:'往後',exact:true}).first().click();await idle();
  await page.locator('#caption').fill('今晚，留一句話給自己。');await page.getByRole('button',{name:'保存本次發送',exact:true}).click();await idle();
  assert.equal(await page.locator('#dispatch-editor').isVisible(),false);
@@ -98,7 +98,33 @@ try{
  await page.screenshot({path:resolve(output,'dispatch-desktop.png'),fullPage:true});
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:resolve(output,'dispatch-mobile.png'),fullPage:true});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.setViewportSize({width:1440,height:1050});
- const downloadPromise=page.waitForEvent('download');await page.locator('#download-dispatch').click();const download=await downloadPromise;await idle();
+ let downloads=0;page.on('download',()=>downloads++);
+ await page.evaluate(()=>{
+  window.shareMode='success';window.shareCalls=[];
+  Object.defineProperty(navigator,'canShare',{configurable:true,value:({files})=>window.shareMode!=='unsupported'&&files.every(f=>f.type==='image/png')});
+  Object.defineProperty(navigator,'share',{configurable:true,value:({files})=>{
+   if(!navigator.userActivation.isActive)throw Error('Missing user activation');
+   window.shareCalls.push(files.map(f=>f.name));
+   if(window.shareMode==='cancel')return Promise.reject(new DOMException('cancel','AbortError'));
+   if(window.shareMode==='fail')return Promise.reject(new DOMException('fail','NotAllowedError'));
+   return Promise.resolve();
+  }});
+ });
+ await page.locator('#prepare-share').click();await idle();assert.equal(downloads,0);
+ assert.equal(await page.locator('#share-previews img').count(),2);
+ await page.locator('#open-share').click();await idle();assert.deepEqual(await page.evaluate(()=>window.shareCalls.at(-1)),['daan-109.png','daan-110.png']);
+ assert.match(await page.locator('#studio-status').innerText(),/分享操作已完成/);
+ await page.evaluate(()=>window.shareMode='cancel');await page.locator('#open-share').click();await idle();assert.match(await page.locator('#studio-status').innerText(),/已取消分享/);
+ await page.evaluate(()=>window.shareMode='fail');await page.locator('#open-share').click();await idle();assert.match(await page.locator('#studio-status').innerText(),/分享失敗/);
+ await page.evaluate(()=>window.shareMode='unsupported');await page.locator('#prepare-share').click();await idle();assert.equal(await page.locator('#open-share').isVisible(),false);
+ assert.equal(await page.locator('#share-previews button').count(),2);
+ await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:resolve(output,'sharing-mobile.png'),fullPage:true});
+ await page.locator('#close-share').click();assert.equal(await page.locator('#share-previews img').count(),0);
+ await page.evaluate(()=>window.shareMode='success');await page.getByRole('button',{name:'準備此張（儲存／分享）',exact:true}).first().click();await idle();await page.locator('#open-share').click();await idle();assert.deepEqual(await page.evaluate(()=>window.shareCalls.at(-1)),['daan-109.png']);
+ await page.setViewportSize({width:1280,height:900});await page.screenshot({path:resolve(output,'sharing-desktop.png'),fullPage:true});
+ assert.equal(db.raw.prepare('SELECT last_number FROM send_progress').get().last_number,108);
+ checks.push('native-share mock: separate activation click, ordered group/single PNG, no ZIP side effect, cancellation/retry/fallback, cache clear');
+ const downloadPromise=page.waitForEvent('download');await page.locator('#download-dispatch').click();const download=await downloadPromise;await idle();assert.equal(await page.locator('#share-panel').isVisible(),false);
  await download.saveAs(resolve(output,'dispatch.zip'));assert.equal(await download.failure(),null);
  const archive=await readFile(resolve(output,'dispatch.zip'));let offset=0;const entries=[];
  while(archive.readUInt32LE(offset)===0x04034b50){const size=archive.readUInt32LE(offset+18),n=archive.readUInt16LE(offset+26),extra=archive.readUInt16LE(offset+28),start=offset+30+n+extra;entries.push({name:archive.subarray(offset+30,offset+30+n).toString(),data:archive.subarray(start,start+size)});offset=start+size;}
@@ -116,6 +142,11 @@ try{
  page.once('dialog',dialog=>dialog.accept());await page.locator('#confirm-send').click();await idle();
  assert.equal(db.raw.prepare('SELECT last_number FROM send_progress').get().last_number,109);
  assert.equal(db.raw.prepare('SELECT count(*) n FROM send_records').get().n,1);
+ await page.locator('#close-dispatch').click();await page.getByRole('button',{name:'已發送紀錄',exact:true}).click();await idle();
+ await page.getByRole('button',{name:'準備圖片（儲存／分享）',exact:true}).click();await idle();await page.locator('#open-share').click();await idle();
+ assert.deepEqual(await page.evaluate(()=>window.shareCalls.at(-1)),['daan-109.png']);
+ await page.getByRole('button',{name:'本次發送',exact:true}).click();await idle();assert.equal(await page.locator('#share-previews img').count(),0);
+ await page.getByRole('button',{name:'開啟本次發送'}).click();await idle();
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:resolve(output,'partial-confirm-mobile.png'),fullPage:true});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  page.once('dialog',dialog=>dialog.accept());await page.locator('#cancel-send').click();await idle();
  assert.equal(db.raw.prepare('SELECT last_number FROM send_progress').get().last_number,109);
@@ -172,5 +203,5 @@ try{
  await page.screenshot({path:resolve(output,'number-settings-mobile.png'),fullPage:true});
  await page.setViewportSize({width:1280,height:900});await page.screenshot({path:resolve(output,'number-settings-desktop.png'),fullPage:true});
  checks.push('owner number settings UI fixture: hidden for admin, cancellation, upward correction and next-number refresh');
- await writeFile(resolve(output,'report.json'),JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:12},null,2));console.log(JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:12}));
+ await writeFile(resolve(output,'report.json'),JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:14},null,2));console.log(JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:14}));
 }finally{await browser.close();await new Promise(r=>server.close(r));db.close();}
