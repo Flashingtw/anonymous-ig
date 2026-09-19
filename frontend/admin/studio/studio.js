@@ -145,6 +145,7 @@ function sync(){
   }else $('#ready-image').disabled=true;
   $('#image-count').textContent=`${graphemeLength($('#image-text').value)} / 1000`;
   $('#caption-count').textContent=`${graphemeLength($('#caption').value)} / 2000`;
+  $('#copy-caption').disabled=busy||!$('#caption').value.trim();
 }
 function boxControls(){if(!doc)return;const box=doc.layout[selected];$('#font-size').value=box.size;$('#pos-x').value=Math.round(box.x);$('#pos-y').value=Math.round(box.y);}
 async function ensureAssets(){
@@ -255,6 +256,11 @@ $('#compose').addEventListener('click',()=>run(()=>{
   dispatch={state:'editing',caption:defaultCaption([...selection].map((id,index)=>sendState.last_number+index+1)),items:[...selection].map(id=>{const row=listing.drafts.find(d=>d.version_id===id);return {version_id:id,submission_id:row?.id,text:row?.text,layout:row?.layout};})};dispatchDirty=true;showDispatch();$('#dispatch-editor').scrollIntoView({behavior:'smooth'});say('請確認順序並填寫貼文說明。');
 }));
 $('#caption').addEventListener('input',()=>{if(dispatch){dispatch.caption=$('#caption').value;dispatchDirty=true;sync();}});
+$('#copy-caption').addEventListener('click',async()=>{
+ if(busy)return;const field=$('#caption'),text=field.value;if(!text.trim())return;
+ try{await navigator.clipboard.writeText(text);say('已複製內文。');}
+ catch{field.focus();field.select();field.setSelectionRange(0,text.length);say('無法自動複製，已選取內文，請長按或使用複製快捷鍵。');}
+});
 $('#save-dispatch').addEventListener('click',()=>run(async()=>{
   await saveDispatch();closePanels();selection.clear();tab='ready';await reload();
   say('本次發送已保存，未發布到 IG。');

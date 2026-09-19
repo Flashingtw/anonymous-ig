@@ -88,7 +88,11 @@ try{
  for(const checkbox of await page.getByRole('checkbox').all())await checkbox.check();await page.locator('#compose').click();await idle();
  assert.match(await page.locator('#caption').inputValue(),/^🔒\n日期📆\n\d{4}\/\d{2}\/\d{2} - (?:Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\n\n🔥匿名🔥\n#109\n#110\n\n⭐️規則說明在置頂！⭐️$/);
  await page.getByRole('button',{name:'往後',exact:true}).first().click();await idle();
- await page.locator('#caption').fill('今晚，留一句話給自己。');await page.getByRole('button',{name:'保存本次發送',exact:true}).click();await idle();
+ await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.copiedCaption=text;}}}));
+ await page.locator('#copy-caption').click();assert.equal(await page.evaluate(()=>window.copiedCaption),await page.locator('#caption').inputValue());
+ await page.locator('#caption').fill('');assert.equal(await page.locator('#copy-caption').isDisabled(),true);
+ await page.locator('#caption').fill('今晚，留一句話給自己。');await page.locator('#copy-caption').click();assert.equal(await page.evaluate(()=>window.copiedCaption),'今晚，留一句話給自己。');
+ await page.getByRole('button',{name:'保存本次發送',exact:true}).click();await idle();
  assert.equal(await page.locator('#dispatch-editor').isVisible(),false);
  assert.equal(await page.locator('[data-tab="ready"]').getAttribute('aria-pressed'),'true');
  await page.getByRole('button',{name:'本次發送',exact:true}).click();await idle();
@@ -118,6 +122,11 @@ try{
  await page.unroute('**/api/admin/studio/send/image',failUpload);
  await page.locator('#generate-images').click();await idle();assert.equal(downloads,0);
  assert.equal(await page.locator('#dispatch-items img').count(),2);assert.equal(await page.locator('#generate-images').isVisible(),false);
+ await page.locator('#copy-caption').click();assert.equal(await page.evaluate(()=>window.copiedCaption),'今晚，留一句話給自己。');
+ await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async()=>{throw new DOMException('denied','NotAllowedError');}}}));
+ await page.locator('#copy-caption').click();assert.match(await page.locator('#studio-status').innerText(),/已選取內文/);
+ assert.equal(await page.locator('#caption').evaluate(el=>el.selectionEnd-el.selectionStart),await page.locator('#caption').evaluate(el=>el.value.length));
+ checks.push('caption copy preserves multiline generated and edited text; empty disabled; locked caption copy and denied clipboard selection fallback');
  await page.locator('#save-phone').click();await idle();assert.deepEqual(await page.evaluate(()=>window.shareCalls.at(-1)),['daan-109.png','daan-110.png']);
  assert.equal(await page.locator('#studio-status').innerText(),'');
  await page.evaluate(()=>window.shareMode='cancel');await page.locator('#save-phone').click();await idle();assert.equal(await page.locator('#studio-status').innerText(),'');
