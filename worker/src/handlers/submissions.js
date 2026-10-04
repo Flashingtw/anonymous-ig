@@ -45,13 +45,16 @@ export async function createSubmissionHandler(request, env) {
 export async function listPendingSubmissionsHandler(request, env) {
   const url = new URL(request.url);
   const limit = parseLimit(url.searchParams.get("limit"));
-  const submissions = await listPendingSubmissions(env.DB, limit);
+  const after = url.searchParams.has('after') ? parsePositiveInteger(url.searchParams.get('after'),'游標') : null;
+  const rows = await listPendingSubmissions(env.DB, limit+1, after);
+  const submissions = rows.slice(0,limit);
+  const total = await env.DB.prepare("SELECT count(*) total FROM submissions WHERE status='pending'").first('total');
 
   return jsonResponse({
     ok: true,
     data: {
       submissions,
-      meta: { count: submissions.length, limit }
+      meta: { count: submissions.length, limit, total, nextCursor: rows.length>limit?submissions.at(-1).id:null }
     }
   });
 }

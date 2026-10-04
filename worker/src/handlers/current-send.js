@@ -6,7 +6,7 @@ import {readImage} from './image-studio.js';
 export async function currentSendHandler(request,env,principal,path){
  const root='/api/admin/studio/send',db=env.DB;
  if(env.SINGLE_SEND_ENABLED!=='true')throw new HttpError(503,'SINGLE_SEND_DISABLED','本次發送尚未啟用。');
- if(path===root&&request.method==='GET')return jsonResponse({ok:true,data:await currentSend(db)});
+ if(path===root&&request.method==='GET')return jsonResponse({ok:true,data:await currentSend(db,new URL(request.url).searchParams.get('batchId')??undefined)});
  if(path===root+'/number'){
   if(principal.role!=='owner')throw new HttpError(403,'FORBIDDEN','只有 owner 可以調整最後編號。');
   if(request.method!=='POST')return methodNotAllowed(['POST']);
@@ -35,7 +35,8 @@ export async function currentSendHandler(request,env,principal,path){
   if(!env.STUDIO_IMAGES)throw new HttpError(503,'IMAGE_STORAGE_UNAVAILABLE','圖片儲存尚未設定。');
   const revision=Number(request.headers.get('If-Match')),generation=request.headers.get('X-Send-Generation'),position=Number(request.headers.get('X-Send-Position'));
   const state=await currentSend(db);
-  if(state.revision!==revision||state.batch?.state!=='prepared'||state.batch.generation!==generation||!state.batch.items.some(i=>i.position===position&&!i.confirmed&&!i.object_key))throw new HttpError(409,'SEND_CONFLICT','準備已更新，請重新載入。');
+  const batch=state.batches.find(b=>b.generation===generation);
+  if(state.revision!==revision||batch?.state!=='prepared'||!batch.items.some(i=>i.position===position&&!i.confirmed&&!i.object_key))throw new HttpError(409,'SEND_CONFLICT','準備已更新，請重新載入。');
   const bytes=await readImage(request),key=`final/${generation}/${crypto.randomUUID()}.png`;
   // Record before external I/O so a failed/uncertain upload is eventually reclaimed.
   await db.prepare("INSERT INTO send_uploads VALUES(?,strftime('%Y-%m-%dT%H:%M:%fZ','now','+1 day'))").bind(key).run();
@@ -44,7 +45,9 @@ export async function currentSendHandler(request,env,principal,path){
  }
  const command=path.slice(root.length+1);
  if(['save','prepare','reset','cancel','confirm'].includes(command)&&request.method==='POST'){
-  const body=await parseJsonObject(request,{allowedKeys:['revision','items','caption','count'],maxBytes:16384});
+  const body=await parseJsonObject(request,{allowedKeys:['revision','items','caption','count','batchId','publishAt'],maxBytes:16384});
+  if(command==='prepare'&&env.IG_PUBLISH_ENABLED==='true'&&body.publishAt===undefined)throw new HttpError(400,'PUBLISH_TIME_REQUIRED','請設定發布時間，鎖定後將自動加入排程。');
+  if(command==='prepare'&&body.publishAt!==undefined&&env.IG_PUBLISH_ENABLED!=='true')throw new HttpError(503,'IG_DISABLED','Instagram 發布尚未啟用，不能鎖定自動發布。');
   return jsonResponse({ok:true,data:await changeSend(db,command,body,principal)});
  }
  return methodNotAllowed(['GET','POST']);

@@ -67,6 +67,8 @@ const errorState = document.querySelector("#error-state");
 const errorStateMessage = document.querySelector("#error-state-message");
 const emptyState = document.querySelector("#empty-state");
 const submissionsList = document.querySelector("#submissions-list");
+const loadMoreSubmissions=document.querySelector('#load-more-submissions');
+let submissionsCursor=null, submissionsTotal=0, submissionsLoading=false;
 const pendingCount = document.querySelector("#pending-count");
 const queueStatus = document.querySelector("#queue-status");
 const refreshButton = document.querySelector("#refresh-button");
@@ -237,6 +239,7 @@ function passwordGraphemeLength(value) {
 }
 
 function setQueueView(view) {
+  loadMoreSubmissions.hidden=view!=='list'||submissionsCursor===null;
   loadingState.hidden = view !== "loading";
   errorState.hidden = view !== "error";
   emptyState.hidden = view !== "empty";
@@ -303,13 +306,15 @@ async function moderateSubmission(submission, action, card, controls) {
     const restoreFocus = startedWithFocus && (document.activeElement === document.body || card.contains(document.activeElement));
     card.remove();
     const remaining = submissionsList.childElementCount;
-    updatePendingCount(remaining);
+    submissionsTotal=Math.max(0,submissionsTotal-1);updatePendingCount(submissionsTotal);
     announce(formatText(
       action === "approve" ? messages.approveSuccess : messages.rejectSuccess,
       { id: submission.id }
     ));
 
-    if (remaining === 0) {
+    if (remaining === 0 && submissionsCursor!==null) {
+      await loadSubmissions({append:true});
+    } else if (remaining === 0) {
       setQueueView("empty");
     }
     if (restoreFocus) {
@@ -423,21 +428,26 @@ function handleAuthFailure(error) {
   showAuth(message);
 }
 
-async function loadSubmissions({ authenticating = false } = {}) {
+async function loadSubmissions({ authenticating = false, append = false } = {}) {
+  if(submissionsLoading)return;
   if (!adminAuth.hasCredential()) {
     showAuth();
     return;
   }
 
+  submissionsLoading=true;loadMoreSubmissions.disabled=true;
   showDashboard();
-  setQueueView("loading");
+  if(!append)setQueueView("loading");
   refreshButton.disabled = true;
 
   try {
-    const data = await apiRequest("/api/admin/submissions?limit=100", {
+    const data = await apiRequest("/api/admin/submissions?limit=100"+(append&&submissionsCursor!==null?'&after='+submissionsCursor:''), {
       headers: adminAuth.requestHeaders()
     });
-    renderSubmissions(data.submissions);
+    submissionsCursor=data.meta?.nextCursor??null;submissionsTotal=data.meta?.total??data.submissions.length;
+    if(append){submissionsList.append(...data.submissions.map(renderSubmission));setQueueView(submissionsList.childElementCount?'list':'empty');}
+    else renderSubmissions(data.submissions);
+    updatePendingCount(submissionsTotal);
   } catch (error) {
     if (error instanceof ApiClientError && [401, 403, 503].includes(error.status)) {
       handleAuthFailure(error);
@@ -449,11 +459,13 @@ async function loadSubmissions({ authenticating = false } = {}) {
       return;
     }
 
+    if(append){announce('載入失敗，請再按載入更多投稿重試。');return;}
     errorStateMessage.textContent = error instanceof ApiClientError
       ? error.message
       : messages.defaultLoadError;
     setQueueView("error");
   } finally {
+    submissionsLoading=false;loadMoreSubmissions.disabled=false;
     refreshButton.disabled = false;
     setDevAuthBusy(false);
   }
@@ -713,6 +725,7 @@ queueTab.addEventListener("click", () => {
   loadSubmissions();
 });
 refreshButton.addEventListener("click", () => teamPanel.hidden ? loadSubmissions() : loadTeam());
+loadMoreSubmissions.addEventListener('click',()=>loadSubmissions({append:true}));
 retryButton.addEventListener("click", () => loadSubmissions());
 emptyRefreshButton.addEventListener("click", () => loadSubmissions());
 clearAuthButton.addEventListener("click", async () => {

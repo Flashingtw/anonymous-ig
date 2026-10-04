@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {createServer} from 'node:http';
 import {readFile,mkdir,writeFile} from 'node:fs/promises';
+import {readFileSync} from 'node:fs';
 import {resolve,extname,sep} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {createTestDatabase} from '../test/helpers/d1.js';
@@ -11,6 +12,9 @@ const serve=process.argv.includes('--serve');
 const root=resolve(import.meta.dirname,'..'),frontend=resolve(root,'frontend'),output=resolve(root,'tmp/studio-visual-review');
 await mkdir(output,{recursive:true});
 const db=createTestDatabase({images:true,singleSend:true,studioDelete:true}),objects=new Map(),localToken=crypto.randomUUID();
+db.raw.exec(readFileSync(resolve(root,'migrations/0010_instagram_publish_queue.sql'),'utf8'));
+db.raw.exec(readFileSync(resolve(root,'migrations/0011_multiple_send_batches.sql'),'utf8'));
+db.raw.exec(readFileSync(resolve(root,'migrations/0012_automatic_locked_batches.sql'),'utf8'));
 db.raw.exec("INSERT INTO admins(id,github_user_id,github_username,role,access_email) VALUES(1,'123','test-owner','owner','owner@example.test'); INSERT INTO submissions(id,content,status) VALUES(1,'今天也要記得，留一點時間給自己。','approved'),(2,'不知道該怎麼說，但還是想謝謝一直陪著我的你。','approved');");
 const env={DB:db.DB,APP_ENV:'development',STUDIO_DELETE_ENABLED:'true',SINGLE_SEND_ENABLED:'true',IMAGE_STUDIO_ENABLED:'true',ADMIN_AUTH_PROVIDER:'dev',DEV_ADMIN_MODE:'true',DEV_ADMIN_TOKEN:localToken,STUDIO_IMAGES:{async put(k,v){objects.set(k,v);},async get(k){return objects.has(k)?{body:objects.get(k)}:null;},async delete(k){objects.delete(k);}}};
 const server=createServer(async(req,res)=>{
@@ -28,6 +32,7 @@ const server=createServer(async(req,res)=>{
   res.setHeader('Content-Type',type??'application/octet-stream');res.end(await readFile(path));
  }catch{res.writeHead(500);res.end('Local fixture error');}
 });
+env.IG_PUBLISH_ENABLED=serve?'true':'false';
 await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin=`http://127.0.0.1:${server.address().port}`;
 if(serve){
  console.log(`Isolated ephemeral preview: ${origin}/admin/studio/ (Ctrl+C to stop; data resets on restart; no production calls)`);
@@ -162,6 +167,20 @@ try{
  assert.deepEqual(entries.slice(0,2).map(e=>createHash('sha256').update(e.data).digest('hex')),hashes);
  checks.push('each downloaded PNG byte-matches rendering of the server-locked number and source version');
  checks.push('ready selection, ordered immutable dispatch save, ZIP download');
+ env.IG_PUBLISH_ENABLED='true';await page.evaluate(async()=>{document.querySelector('#instagram-refresh').click();});await idle();
+ await page.locator('#instagram-panel summary').click();await page.locator('#instagram-refresh').click();await idle();
+ await page.getByRole('button',{name:'整包排程',exact:true}).click();await idle();
+ assert.equal(db.raw.prepare('SELECT count(*) n FROM instagram_queue').get().n,1);
+ assert.equal(db.raw.prepare('SELECT publish_status FROM instagram_queue').get().publish_status,'pending');
+ assert.deepEqual(db.raw.prepare('SELECT submission_id FROM instagram_items ORDER BY position').all().map(i=>i.submission_id),locked.map(i=>i.submission_id));
+ const jpegRows=db.raw.prepare('SELECT published_image_key,published_caption FROM instagram_items JOIN instagram_queue USING(batch_id) ORDER BY position').all();
+ for(const row of jpegRows){assert.equal(row.published_caption,'今晚，留一句話給自己。');const bytes=objects.get(row.published_image_key);assert.equal(bytes[0],255);assert.equal(bytes[1],216);}
+ await page.screenshot({path:resolve(output,'instagram-desktop.png'),fullPage:true});
+ await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:resolve(output,'instagram-mobile.png'),fullPage:true});
+ await page.getByRole('button',{name:'取消整包排程',exact:true}).click();await idle();
+ await page.locator('#instagram-panel summary').click();await page.setViewportSize({width:1280,height:900});
+ env.IG_PUBLISH_ENABLED='false';await page.locator('#instagram-refresh').evaluate(el=>el.click());await idle();
+ checks.push('IG schedules/cancels ONE batch with ordered JPEGs and shared immutable caption; desktop/mobile no overflow; no Meta requests');
  assert.equal(db.raw.prepare('SELECT last_number FROM send_progress').get().last_number,108);
  await page.screenshot({path:resolve(output,'prepared-desktop.png'),fullPage:true});
  await page.locator('#close-dispatch').click();await page.getByRole('button',{name:'本次發送',exact:true}).click();await idle();
@@ -230,5 +249,63 @@ try{
  await page.screenshot({path:resolve(output,'number-settings-mobile.png'),fullPage:true});
  await page.setViewportSize({width:1280,height:900});await page.screenshot({path:resolve(output,'number-settings-desktop.png'),fullPage:true});
  checks.push('owner number settings UI fixture: hidden for admin, cancellation, upward correction and next-number refresh');
+ // Two independent saved batches reserve their images immediately.
+ const source=db.raw.prepare('SELECT * FROM image_versions LIMIT 1').get();
+ for(const id of [4,5]){
+  db.raw.prepare("INSERT INTO submissions(id,content,status) VALUES(?,?,'approved')").run(id,'multi '+id);
+  db.raw.prepare("INSERT INTO image_drafts(id,text,layout,state) VALUES(?,?,?,'ready')").run(id,'multi '+id,source.layout);
+  db.raw.prepare('INSERT INTO image_versions(id,draft_id,draft_revision,object_key,text,layout) VALUES(?,?,1,?,?,?)').run(crypto.randomUUID(),id,'multi-source-'+id,'multi '+id,source.layout);
+  objects.set('multi-source-'+id,objects.get(source.object_key));
+ }
+ await page.locator('#reload').click();await idle();await page.getByRole('button',{name:'待發送',exact:true}).click();
+ for(const id of [4,5]){
+  const card=page.locator('#gallery article').filter({hasText:`投稿 #${id}`});await card.locator('input[type=checkbox]').check();
+  await page.locator('#compose').click();await idle();await page.locator('#save-dispatch').click();await idle();
+  assert.equal(await page.locator('#gallery article').filter({hasText:`投稿 #${id}`}).count(),0,await page.locator('#studio-status').innerText());
+ }
+ await page.getByRole('button',{name:'本次發送',exact:true}).click();await idle();
+ assert.equal(await page.getByRole('button',{name:'開啟本次發送',exact:true}).count(),2);
+ await page.screenshot({path:resolve(output,'multiple-batches-desktop.png'),fullPage:true});
+ await page.setViewportSize({width:390,height:844});await page.screenshot({path:resolve(output,'multiple-batches-mobile.png'),fullPage:true});
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ await page.getByRole('button',{name:'開啟本次發送',exact:true}).first().click();await idle();page.once('dialog',d=>d.accept());await page.locator('#cancel-send').click();await idle();
+ assert.equal(await page.locator('#gallery article input[type=checkbox]').count(),1);
+ checks.push('save two separate batches; reserved images disappear from ready; cancel returns one batch only; desktop/mobile no overflow');
+ env.IG_PUBLISH_ENABLED='true';await page.locator('#instagram-refresh').evaluate(el=>el.click());await idle();
+ await page.getByRole('button',{name:'本次發送',exact:true}).click();await idle();
+ await page.getByRole('button',{name:'開啟本次發送',exact:true}).click();await idle();
+ page.once('dialog',d=>d.accept());await page.locator('#generate-images').click();await idle();
+ assert.equal(await page.locator('#cancel-send').isVisible(),false);assert.equal(await page.locator('#reset-send').isVisible(),false);assert.equal(await page.locator('#confirm-controls').isVisible(),false);
+ assert.equal(db.raw.prepare("SELECT count(*) n FROM instagram_queue q JOIN send_batches b ON b.id=q.batch_id WHERE b.auto_publish=1 AND q.publish_status='pending'").get().n,1);
+ await page.locator('#close-dispatch').click();await idle();
+ assert.equal(await page.locator('#gallery input[type=checkbox]').count(),0,'Closing the batch must immediately show the updated ready list');
+ assert.equal(await page.locator('#compose').isDisabled(),true,'Reserved images must be removed from the selection');
+ await page.getByRole('button',{name:'待發送',exact:true}).click();await idle();
+ await page.locator('#gallery input[type=checkbox]').check();await page.locator('#compose').click();await idle();
+ // An interrupted JPEG upload retains the reservation; one retry completes it.
+ await page.route('**/instagram/batches/*/image',route=>route.fulfill({status:503,json:{ok:false,error:{message:'simulated upload failure'}}}));
+ page.once('dialog',d=>d.accept());await page.locator('#generate-images').click();await idle();
+ assert.equal(db.raw.prepare("SELECT count(*) n FROM send_batches WHERE auto_publish=1 AND state='prepared'").get().n,2);
+ assert.equal(db.raw.prepare("SELECT count(*) n FROM instagram_queue q JOIN send_batches b ON b.id=q.batch_id WHERE b.auto_publish=1 AND q.publish_status='none'").get().n,1);
+ assert.equal(await page.locator('#cancel-send').isVisible(),false);
+ await page.unroute('**/instagram/batches/*/image');await page.locator('#generate-images').click();await idle();
+ assert.equal(db.raw.prepare("SELECT count(*) n FROM instagram_queue q JOIN send_batches b ON b.id=q.batch_id WHERE b.auto_publish=1 AND q.publish_status='pending'").get().n,2);
+ assert.deepEqual(db.raw.prepare('SELECT first_number,last_number FROM instagram_queue q JOIN send_batches b ON b.id=q.batch_id WHERE b.auto_publish=1 ORDER BY first_number').all().map(r=>[r.first_number,r.last_number]),[[121,121],[122,122]]);
+ await page.locator('#close-dispatch').click();await page.getByRole('button',{name:'待發送',exact:true}).click();await idle();
+ const freshReady=await page.evaluate(async()=>{const {apiRequest}=await import('/assets/api.js');const {adminAuth}=await import('/assets/admin-auth.js');const data=await apiRequest('/api/admin/studio',{headers:adminAuth.requestHeaders()});return data.drafts.filter(r=>r.state==='ready'&&!r.reserved).map(r=>r.id);});
+ assert.deepEqual(freshReady,[],'Server must mark all saved batch images reserved');
+ assert.equal(await page.locator('#gallery input[type=checkbox]').count(),0,'Locked batch images must disappear from ready without pressing Refresh');
+ await page.getByRole('button',{name:'本次發送',exact:true}).click();await idle();await page.getByRole('button',{name:'開啟本次發送',exact:true}).last().click();await idle();
+ await page.screenshot({path:resolve(output,'automatic-locked-mobile.png'),fullPage:true});
+ await page.setViewportSize({width:1280,height:900});await page.screenshot({path:resolve(output,'automatic-locked-desktop.png'),fullPage:true});
+ checks.push('one action locks, renders and automatically queues; two batches reserve distinct contiguous numbers; cancellation hidden; failed JPEG upload resumes without new numbers or manual scheduling');
+ for(let id=1000;id<1235;id++)db.raw.prepare('INSERT INTO submissions(id,content) VALUES(?,?)').run(id,'pagination '+id);
+ await page.goto(origin+'/admin/');await page.waitForFunction(()=>document.querySelectorAll('#submissions-list article').length===100);
+ await page.locator('#load-more-submissions').click();await page.waitForFunction(()=>document.querySelectorAll('#submissions-list article').length===200);
+ await page.locator('#load-more-submissions').click();await page.waitForFunction(()=>document.querySelectorAll('#submissions-list article').length===235);
+ assert.equal(await page.locator('#load-more-submissions').isVisible(),false);
+ assert.match(await page.locator('#pending-count').innerText(),/235/);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ assert.deepEqual(errors,[]);checks.push('admin loads 235 submissions across three pages with accurate total and no mobile overflow');
  await writeFile(resolve(output,'report.json'),JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:14},null,2));console.log(JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:14}));
 }finally{await browser.close();await new Promise(r=>server.close(r));db.close();}

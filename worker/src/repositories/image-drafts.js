@@ -51,8 +51,9 @@ export async function listStudio(db,singleSend=false,removalSchema=false){
   const approved=await db.prepare("SELECT id,content FROM submissions WHERE status='approved' AND id NOT IN (SELECT id FROM image_drafts) ORDER BY id DESC").all();
   const dispatches=await db.prepare('SELECT id,caption,revision,updated_at FROM dispatch_drafts ORDER BY updated_at DESC').all();
   const sent=singleSend?new Set((await db.prepare('SELECT submission_id FROM send_records').all()).results.map(r=>r.submission_id)):new Set();
+  const reserved=singleSend?new Set((await db.prepare("SELECT i.submission_id FROM send_items i JOIN send_batches b ON b.id=i.batch_id WHERE b.state IN ('editing','prepared')").all()).results.map(r=>r.submission_id)):new Set();
   if(removalSchema)for(const row of (await db.prepare('SELECT submission_id FROM studio_removals').all()).results)sent.add(row.submission_id);
-  return {drafts:drafts.results.filter(r=>!sent.has(r.id)).map(row=>({...row,layout:JSON.parse(row.layout)})),approved:approved.results.filter(r=>!sent.has(r.id)),dispatches:dispatches.results};
+  return {drafts:drafts.results.filter(r=>!sent.has(r.id)).map(row=>({...row,reserved:reserved.has(row.id),layout:JSON.parse(row.layout)})),approved:approved.results.filter(r=>!sent.has(r.id)),dispatches:dispatches.results};
 }
 export async function getDispatch(db,id,singleSend=false){
   const draft=await db.prepare('SELECT * FROM dispatch_drafts WHERE id=?').bind(id).first();

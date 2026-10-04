@@ -23,6 +23,8 @@ import { healthHandler } from "./handlers/health.js";
 import { accessLoginHandler } from "./handlers/access-auth.js";
 import { adminDirectoryHandler } from "./handlers/admin-directory.js";
 import {imageStudioHandler} from "./handlers/image-studio.js";
+import {instagramHandler,instagramMedia} from './handlers/instagram.js';
+import {processInstagramQueue} from './repositories/instagram-queue.js';
 import {
   authProvidersHandler,
   changePasswordHandler,
@@ -124,6 +126,9 @@ export async function routeApi(request, env, dependencies = {}) {
     return healthHandler(env);
   }
 
+  const igMedia=pathname.match(/^\/api\/instagram-media\/([^/]+)\.jpg$/);
+  if(igMedia)return instagramMedia(request,env,igMedia[1]);
+
   if (pathname === "/api/auth/github") {
     if (request.method !== "GET") {
       return methodNotAllowed(["GET"]);
@@ -197,6 +202,8 @@ export async function routeApi(request, env, dependencies = {}) {
     if (request.method !== "GET") return methodNotAllowed(["GET"]);
     return adminDirectoryHandler(request, env, principal);
   }
+
+  if(pathname==='/api/admin/instagram'||/^\/api\/admin\/instagram\/batches\/[a-zA-Z0-9-]+\/(image|schedule|publish-now|retry-publish|cancel-publish)$/.test(pathname))return instagramHandler(request,env,principal,pathname,dependencies);
 
   if (pathname === "/api/admin/studio" || pathname.startsWith("/api/admin/studio/")) {
     return imageStudioHandler(request, env, principal, pathname);
@@ -272,6 +279,7 @@ export default {
   async scheduled(event,env,context) {
     const {cleanupSentImages}=await import('./repositories/send-cleanup.js');
     context.waitUntil(cleanupSentImages(env));
+    context.waitUntil(processInstagramQueue(env));
   },
   async fetch(request, env) {
     const url = new URL(request.url);

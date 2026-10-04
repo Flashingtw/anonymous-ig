@@ -21,6 +21,7 @@
     </details>
     <p id="studio-status" role="status" aria-live="polite"></p>
     <button id="reload">重新整理</button>
+    <details id="instagram-panel" class="studio-paper" hidden><summary>Instagram 排程</summary><p>本次發送整包發布成一篇貼文，圖片依目前排序、共用同一份內文。每五分鐘最多發布一包。</p><button id="instagram-refresh" type="button">更新發布狀態</button><div id="instagram-list" class="studio-grid"></div></details>
     <section id="gallery" class="studio-grid" aria-label="圖片列表"></section>
     <button id="compose" hidden>準備發送</button>
     <section id="editor" class="studio-paper" hidden aria-labelledby="editor-title">
@@ -46,11 +47,12 @@
     </section>
     <section id="dispatch-editor" class="studio-paper" hidden aria-labelledby="dispatch-title">
       <div class="studio-heading"><h2 id="dispatch-title">本次發送</h2><button id="close-dispatch">關閉</button></div>
-      <p>團隊同時只有一組，1–10 張。下載後請手動上傳 IG，再回來確認；系統不會向 IG 驗證。</p>
+      <p id="send-method-hint">可保存多組，每組 1–10 張；一次鎖定一組正式編號。下載後請手動上傳 IG，再回來確認。</p>
       <p id="send-stage" role="status"></p>
       <ol id="dispatch-items"></ol>
       <label for="caption">貼文說明</label><textarea id="caption" rows="5" placeholder="這組圖片的貼文說明⋯"></textarea><p id="caption-count">0 / 2000</p>
       <div class="studio-actions secondary-actions"><button id="copy-caption" type="button">複製內文</button></div>
+      <label id="publish-time-control" for="publish-time" hidden>預定發布時間（本機時區）<input id="publish-time" type="datetime-local"></label>
       <div class="studio-actions"><button id="generate-images">產生圖片</button><button id="save-phone" hidden>儲存到手機</button><button id="download-dispatch" class="secondary-action" hidden>下載 ZIP</button></div>
       <p id="output-error" role="status"></p>
       <div class="studio-actions secondary-actions"><button id="save-dispatch">保存本次發送</button><button id="reset-send">返回修改</button><button id="cancel-send">取消本次發送</button></div>

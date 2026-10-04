@@ -23,16 +23,17 @@ export async function createSubmission(db, content) {
   return mapSubmission(row);
 }
 
-export async function listPendingSubmissions(db, limit) {
+export async function listPendingSubmissions(db, limit, after = null) {
   const result = await db
     .prepare(`
       SELECT id, content, status, created_at, updated_at
       FROM submissions
       WHERE status = 'pending'
+      AND (? IS NULL OR (created_at,id)>(SELECT created_at,id FROM submissions WHERE id=?))
       ORDER BY created_at ASC, id ASC
       LIMIT ?
     `)
-    .bind(limit)
+    .bind(after, after, limit)
     .all();
 
   return result.results.map(mapSubmission);

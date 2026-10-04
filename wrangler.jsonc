@@ -23,6 +23,7 @@
         "not_found_handling": "none"
       },
       "vars": {
+        "IG_PUBLISH_ENABLED": "false",
         "ACCESS_AUTH_ENABLED": "false",
         "ACCESS_TEAM_DOMAIN": "",
         "ACCESS_POLICY_AUD": "",

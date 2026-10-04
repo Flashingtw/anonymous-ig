@@ -25,6 +25,7 @@ test('owner number adjustment is upward-only, CAS guarded, atomic and does not f
 });
 function fixture(){
  const d=createTestDatabase({images:true,singleSend:true});
+ d.raw.exec(readFileSync(new URL('../migrations/0011_multiple_send_batches.sql',import.meta.url),'utf8'));
  d.raw.exec("INSERT INTO admins(id,access_email,role) VALUES(1,'owner@example.test','owner'); INSERT INTO submissions(id,content,status) VALUES(1,'original one','approved'),(2,'original two','approved'),(3,'original three','approved');");
  const ids=[];for(let id=1;id<=3;id++){const version=crypto.randomUUID();ids.push(version);d.raw.prepare('INSERT INTO image_drafts(id,text,layout,state) VALUES(?,?,?,?)').run(id,'copy '+id,JSON.stringify(defaultLayout()),'ready');d.raw.prepare('INSERT INTO image_versions(id,draft_id,draft_revision,object_key,text,layout) VALUES(?,?,1,?,?,?)').run(version,id,'source/'+id,'copy '+id,JSON.stringify(defaultLayout()));}
  const objects=new Map(ids.map((_,i)=>['source/'+(i+1),true]));
@@ -33,6 +34,36 @@ function fixture(){
  const upload=async()=>{let s=await currentSend(d.DB);for(const i of s.batch.items.filter(i=>!i.confirmed&&!i.object_key)){const key='final/'+crypto.randomUUID();objects.set(key,true);s=await attachFinal(d.DB,{revision:s.revision,generation:s.batch.generation,position:i.position,key},principal);}return s;};
  return {...d,ids,objects,env,command,upload};
 }
+test('multiple saved batches reserve different images and require explicit selection',async t=>{
+ const f=fixture();t.after(()=>f.close());
+ const a=await f.command('save',{batchId:null,caption:'A',items:[f.ids[0]]});
+ const b=await f.command('save',{batchId:null,caption:'B',items:[f.ids[1]]});
+ assert.notEqual(a.batch.id,b.batch.id);assert.equal(b.batches.length,2);
+ assert.equal((await currentSend(f.DB,a.batch.id)).batch.caption,'A');
+ await assert.rejects(()=>f.command('save',{batchId:null,caption:'duplicate',items:[f.ids[0]]}));
+ await assert.rejects(()=>f.command('cancel'));
+ await f.command('prepare',{batchId:b.batch.id});
+ await assert.rejects(()=>f.command('prepare',{batchId:a.batch.id}));
+ await f.upload();const done=await f.command('confirm',{batchId:b.batch.id,count:1});assert.equal(done.last_number,109);
+ const next=await f.command('prepare',{batchId:a.batch.id});assert.equal(next.batch.items[0].number,110);
+ assert.deepEqual(f.raw.prepare('PRAGMA foreign_key_check').all(),[]);
+});
+test('saved batch images leave ready selection and cancellation releases only that batch',async t=>{
+ const {listStudio}=await import('../worker/src/repositories/image-drafts.js');
+ const f=fixture();t.after(()=>f.close());const a=await f.command('save',{batchId:null,caption:'A',items:[f.ids[0]]});
+ await f.command('save',{batchId:null,caption:'B',items:[f.ids[1]]});
+ let rows=(await listStudio(f.DB,true)).drafts;assert.deepEqual(rows.filter(r=>!r.reserved).map(r=>r.id),[3]);
+ await f.command('cancel',{batchId:a.batch.id});rows=(await listStudio(f.DB,true)).drafts;
+ assert.deepEqual(rows.filter(r=>!r.reserved).map(r=>r.id).sort(),[1,3]);assert.equal((await currentSend(f.DB)).last_number,108);
+});
+test('concurrent new batches remain CAS protected and reservation changes roll back on audit failure',async t=>{
+ const f=fixture();t.after(()=>f.close());const rev=(await currentSend(f.DB)).revision;
+ const results=await Promise.allSettled([0,1].map(i=>changeSend(f.DB,'save',{batchId:null,revision:rev,caption:'',items:[f.ids[i]]},principal)));
+ assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+ f.raw.exec("CREATE TRIGGER fail_multi BEFORE INSERT ON audit_logs WHEN NEW.action='send_save' BEGIN SELECT RAISE(ABORT,'audit failure'); END;");
+ await assert.rejects(()=>f.command('save',{batchId:null,caption:'',items:[f.ids[2]]}),/audit failure/);
+ assert.equal((await currentSend(f.DB)).batches.length,1);
+});
 test('number allocation, ordering, partial prefix, cancel remainder and next group',async t=>{
  const f=fixture();t.after(()=>f.close());
  let s=await f.command('save',{caption:'test',items:[f.ids[1],f.ids[0],f.ids[2]]});assert.equal(s.last_number,108);assert.equal(s.batch.items[0].number,null);
