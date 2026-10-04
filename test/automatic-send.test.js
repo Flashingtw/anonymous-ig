@@ -58,3 +58,17 @@ test('lock CAS and audit rollback preserve reservation and queue atomicity',asyn
  const remaining=(await currentSend(f.DB)).batches.find(b=>b.state==='editing');await assert.rejects(()=>f.lock(remaining.id),/audit failure/);
  assert.equal((await currentSend(f.DB)).next_number,110);assert.equal(f.raw.prepare('SELECT count(*) n FROM instagram_queue').get().n,1);
 });
+
+test('shared last schedule follows latest successful lock, not largest date or retry backoff',async t=>{
+ const f=fixture();t.after(()=>f.close());assert.equal((await currentSend(f.DB)).last_publish_at,null);
+ const a=await f.save([f.versions[0]]);await f.command('prepare',{batchId:a,publishAt:'2030-01-02T12:00:00Z'});
+ assert.equal((await currentSend(f.DB)).last_publish_at,'2030-01-02T12:00:00.000Z');
+ const b=await f.save([f.versions[1]]);
+ assert.equal((await currentSend(f.DB)).last_publish_at,'2030-01-02T12:00:00.000Z');
+ f.raw.exec("CREATE TRIGGER fail_time BEFORE INSERT ON audit_logs WHEN NEW.action='send_prepare' BEGIN SELECT RAISE(ABORT,'time failure'); END;");
+ await assert.rejects(()=>f.command('prepare',{batchId:b,publishAt:time}));
+ assert.equal((await currentSend(f.DB)).last_publish_at,'2030-01-02T12:00:00.000Z');
+ f.raw.exec('DROP TRIGGER fail_time');await f.command('prepare',{batchId:b,publishAt:time});
+ f.raw.exec("UPDATE instagram_queue SET publish_at='2040-01-01T00:00:00Z'");
+ assert.equal((await currentSend(f.DB)).last_publish_at,time);
+});

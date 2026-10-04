@@ -14,7 +14,11 @@ export async function currentSend(db,batchId){
  }
  const batch=batchId===null?null:batchId===undefined?(batches.find(b=>b.state==='prepared')??batches[0]??null):(batches.find(b=>b.id===batchId)??null);
  const next_number=Math.max(progress.last_number,...batches.flatMap(b=>b.state==='prepared'?b.items.map(i=>i.number??0):[]))+1;
- return {...progress,next_number,batch,batches};
+ // Keep 0008-era local/compatibility fixtures readable. Batch rows retain the
+ // original schedule even when queue retry backoff changes its publish_at.
+ const scheduled=(await db.prepare("SELECT b.* FROM send_batches b WHERE state IN ('prepared','completed') ORDER BY (SELECT MAX(number) FROM send_items WHERE batch_id=b.id) DESC").all()).results;
+ const last_publish_at=scheduled.find(b=>b.auto_publish&&b.publish_at)?.publish_at??null;
+ return {...progress,next_number,batch,batches,last_publish_at};
 }
 async function commit(db,revision,principal,action,statements,metadata={}){
  if(!Number.isSafeInteger(revision)||revision<1)fail('請重新載入本次發送。');

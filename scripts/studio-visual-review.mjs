@@ -279,7 +279,13 @@ try{
  env.IG_PUBLISH_ENABLED='true';await page.locator('#reload').click();await idle();
  await page.getByRole('button',{name:'本次發送',exact:true}).click();await idle();
  await page.getByRole('button',{name:'開啟本次發送',exact:true}).click();await idle();
+ await page.locator('#publish-date').fill('2030-01-01');await page.locator('#publish-hour').selectOption('23');await page.locator('#publish-minute').selectOption('45');
+ await page.getByRole('button',{name:'＋30 分鐘',exact:true}).click();assert.equal(await page.locator('#publish-time').inputValue(),'2030-01-02T00:15');
+ await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ await page.screenshot({path:resolve(output,'schedule-time-mobile.png'),fullPage:true});
+ await page.setViewportSize({width:1280,height:900});await page.screenshot({path:resolve(output,'schedule-time-desktop.png'),fullPage:true});
  page.once('dialog',d=>d.accept());await page.locator('#generate-images').click();await idle();
+ assert.equal(await page.locator('#publish-date').isDisabled(),true);
  assert.equal(await page.locator('#cancel-send').isVisible(),false);assert.equal(await page.locator('#reset-send').isVisible(),false);assert.equal(await page.locator('#confirm-controls').isVisible(),false);
  assert.equal(db.raw.prepare("SELECT count(*) n FROM instagram_queue q JOIN send_batches b ON b.id=q.batch_id WHERE b.auto_publish=1 AND q.publish_status='pending'").get().n,1);
  await page.locator('#close-dispatch').click();await idle();
@@ -287,6 +293,7 @@ try{
  assert.equal(await page.locator('#compose').isDisabled(),true,'Reserved images must be removed from the selection');
  await page.getByRole('button',{name:'待發送',exact:true}).click();await idle();
  await page.locator('#gallery input[type=checkbox]').check();await page.locator('#compose').click();await idle();
+ assert.equal(await page.locator('#publish-time').inputValue(),'2030-01-02T01:15','Next batch continues saved schedule +1 hour');
  // An interrupted JPEG upload retains the reservation; one retry completes it.
  await page.route('**/instagram/batches/*/image',route=>route.fulfill({status:503,json:{ok:false,error:{message:'simulated upload failure'}}}));
  page.once('dialog',d=>d.accept());await page.locator('#generate-images').click();await idle();

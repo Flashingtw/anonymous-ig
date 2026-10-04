@@ -41,6 +41,10 @@
 .studio-page .secondary-actions button,.studio-page .secondary-action { background:transparent;border-color:#aaa18e; }
 @media(max-width:640px){#dispatch-editor .studio-actions button{flex:1 1 140px}}
 [hidden] { display:none!important; }
+#publish-time-control { border:1px solid #aaa18e;margin:16px 0;padding:12px;min-width:0; }
+.schedule-time-fields { display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);gap:10px; }
+.schedule-time-fields label { min-width:0; }
+.schedule-time-fields input,.schedule-time-fields select { min-height:44px;box-sizing:border-box; }
 .studio-page .studio-header nav { display:flex;flex-wrap:wrap;gap:12px;align-items:center; }
 @media(max-width:640px){.studio-main{width:calc(100% - 24px);margin:20px auto}.editor-grid{grid-template-columns:1fr}.studio-paper{padding:16px}.studio-header{align-items:flex-start;flex-wrap:wrap}.studio-header h1{font-size:24px}.studio-actions button{flex:1}.studio-grid{grid-template-columns:1fr}.studio-page nav button{flex:1;padding:8px}}
 @media(max-width:640px){.studio-page nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.studio-page nav button{white-space:nowrap;padding:8px 4px}#confirm-controls{align-items:stretch}#confirm-controls label{width:100%}}

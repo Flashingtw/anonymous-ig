@@ -51,7 +51,13 @@
       <ol id="dispatch-items"></ol>
       <label for="caption">貼文說明</label><textarea id="caption" rows="5" placeholder="這組圖片的貼文說明⋯"></textarea><p id="caption-count">0 / 2000</p>
       <div class="studio-actions secondary-actions"><button id="copy-caption" type="button">複製內文</button></div>
-      <label id="publish-time-control" for="publish-time" hidden>預定發布時間（本機時區）<input id="publish-time" type="datetime-local"></label>
+      <fieldset id="publish-time-control" hidden>
+        <legend>預定發布時間（本機時區）</legend>
+        <input id="publish-time" type="hidden">
+        <div class="schedule-time-fields"><label for="publish-date">日期<input id="publish-date" type="date"></label><label for="publish-hour">時<select id="publish-hour"></select></label><label for="publish-minute">分<select id="publish-minute"></select></label></div>
+        <div class="studio-actions"><button type="button" data-time-shift="now">現在</button><button type="button" data-time-shift="30">＋30 分鐘</button><button type="button" data-time-shift="60">＋1 小時</button></div>
+        <p id="schedule-time-hint" class="field__hint"></p>
+      </fieldset>
       <div class="studio-actions"><button id="generate-images">產生圖片</button><button id="save-phone" hidden>儲存到手機</button><button id="download-dispatch" class="secondary-action" hidden>下載 ZIP</button></div>
       <p id="output-error" role="status"></p>
       <div class="studio-actions secondary-actions"><button id="save-dispatch">保存本次發送</button><button id="reset-send">返回修改</button><button id="cancel-send">取消本次發送</button></div>

@@ -8,11 +8,13 @@ import {snapPosition} from './alignment.js';
 import {defaultCaption,syncDefaultCaption} from './caption.js';
 import {createImageShare} from './share.js';
 import {mountInstagram,completeInstagramBatch,instagramEnabled,instagramStatus} from './instagram.js';
+import {mountScheduleTime,suggestedTime,localMinute} from './schedule-time.js';
 const $=selector=>document.querySelector(selector);
 const base='/api/admin/studio';
 let tab='draft',listing={drafts:[],approved:[],dispatches:[]},sendState={last_number:108,revision:1,batch:null},records=[],assets,doc,dispatch,selected='body',dirty=false,dispatchDirty=false,busy=false,drag;
 const selection=new Set();let guides={};
 let assetLoading;
+const scheduleTime=mountScheduleTime($('#publish-time-control'),value=>{if(dispatch)dispatch.proposedPublishAt=value;});
 async function getAssets(){if(assets)return assets;if(!assetLoading)assetLoading=loadStudioAssets().then(value=>assets=value).finally(()=>{assetLoading=null;});return assetLoading;}
 const canvas=$('#image-canvas'),ctx=canvas.getContext('2d');
 const say=text=>{$('#studio-status').textContent=text;};
@@ -121,6 +123,7 @@ function renderGallery(){
   sync();
 }
 function sync(){
+  for(const control of $('#publish-time-control').querySelectorAll('input,select,button'))control.disabled=busy||Boolean(dispatch?.historical)||dispatch?.state==='prepared';
   $('#send-progress').textContent=`最後已發布 #${sendState.last_number} · 下一個可鎖定 #${sendState.next_number??sendState.last_number+1} · 保存／下載不算發布`;
   if(dispatch?.auto_publish){$('#reset-send').hidden=true;$('#cancel-send').hidden=true;$('#confirm-controls').hidden=true;$('#save-dispatch').hidden=true;$('#caption').readOnly=true;$('#publish-time').disabled=true;
     const status=instagramStatus(dispatch.id);$('#send-stage').textContent=status==='pending'?'已加入 IG 排程，會依編號順序自動發布。不能取消或修改；下載不算發布。':status==='publishing'?'正在發布到 Instagram，請勿重複操作。':status==='failed'?'發布失敗，原編號保留；請到 Instagram 排程查看原因。':'已鎖定且不能取消。請完成產圖與上傳，之後會自動排程。';
@@ -234,8 +237,8 @@ function showDispatch(){
   $('#dispatch-title').textContent=historical?'歷史草稿（唯讀）':'本次發送';
   $('#send-stage').textContent=historical?'不占號；可複製成新的本次發送。':dispatch.auto_publish?'順序、圖片與編號已鎖定，不能取消。產圖完成後自動排程；下載不算發布。':locked?'既有手動批次：下載不等於發送，請完成原流程。':'預覽編號，鎖定時由後台分配；鎖定後不能取消、重排或修改。';
   $('#publish-time-control').hidden=historical||!instagramEnabled;
-  const proposed=new Date(dispatch.publish_at??Date.now()+5*60000);
-  $('#publish-time').value=dispatch.proposedPublishAt??new Date(proposed.getTime()-proposed.getTimezoneOffset()*60000).toISOString().slice(0,16);$('#publish-time').disabled=locked;
+  scheduleTime.set(dispatch.proposedPublishAt??(dispatch.publish_at?localMinute(dispatch.publish_at):suggestedTime(sendState.last_publish_at)),locked||historical);
+  $('#schedule-time-hint').textContent=locked?'時間已鎖定，不可修改。':sendState.last_publish_at?`上次設定：${new Date(sendState.last_publish_at).toLocaleString()}。下一包預設 +1 小時；若已過期則使用現在。可自行調整，成功鎖定後才記住。`:'尚無排程紀錄，預設現在。成功鎖定後，下一包自動接續 +1 小時。';
   $('#caption').readOnly=Boolean(locked||historical);
   $('#save-dispatch').hidden=locked;$('#save-dispatch').textContent=historical?'複製到本次發送':'保存本次發送';
   $('#reset-send').hidden=Boolean(dispatch.auto_publish)||!locked||dispatch.items.some(i=>i.confirmed);$('#cancel-send').hidden=Boolean(dispatch.auto_publish)||historical||!dispatch.id;
