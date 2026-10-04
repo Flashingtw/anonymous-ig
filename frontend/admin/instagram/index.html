@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>IG 排程｜大安匿名</title>
+  <link rel="stylesheet" href="/assets/styles.css"><link rel="stylesheet" href="/admin/studio/studio.css">
+  <script src="/config.js"></script><script type="module" src="/admin/studio/schedule-page.js"></script>
+</head>
+<body class="studio-page">
+  <main class="studio-main">
+    <header class="studio-header"><div><p class="kicker">DAAN ANONYMOUS</p><h1>IG 排程</h1></div><nav aria-label="後台導覽"><a href="/admin/">投稿管理</a> · <a href="/admin/studio/">圖片工作室</a></nav></header>
+    <p id="schedule-identity"></p>
+    <p id="schedule-status" role="status" aria-live="polite"></p>
+    <section id="instagram-panel" class="studio-paper" aria-label="Instagram 發布批次">
+      <p>一組圖片發布為一篇貼文。製圖與排序請到圖片工作室，這裡查看發布狀態及處理排程。</p>
+      <button id="instagram-refresh" type="button">更新發布狀態</button>
+      <div id="instagram-list" class="studio-grid"></div>
+    </section>
+  </main>
+</body>
+</html>

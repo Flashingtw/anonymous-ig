@@ -56,7 +56,7 @@ async function run(action){
 }
 function mayLeave(){return !(dirty||dispatchDirty)||confirm('有尚未保存的修改，確定離開並捨棄？');}
 window.addEventListener('beforeunload',event=>{if(dirty||dispatchDirty){event.preventDefault();event.returnValue='';}});
-document.querySelector('.studio-header a').addEventListener('click',event=>{if(!mayLeave())event.preventDefault();});
+document.querySelectorAll('.studio-header a').forEach(link=>link.addEventListener('click',event=>{if(!mayLeave())event.preventDefault();}));
 function closePanels(){clearShare();doc=null;dispatch=null;dirty=false;dispatchDirty=false;$('#editor').hidden=true;$('#dispatch-editor').hidden=true;$('#dispatch-items').replaceChildren();sync();}
 async function reload(){clearShare();listing=await request('');sendState=await request('/send');records=await request('/send/records');$('#send-progress').textContent=`最後已發布 #${sendState.last_number} · 下一個可鎖定 #${sendState.next_number} · 保存／下載不算發布`;renderGallery();await refreshInstagram();sync();say('已更新。');}
 async function imageBlob(id){
@@ -336,8 +336,11 @@ $('#save-number').addEventListener('click',()=>run(async()=>{
  $('#last-number').value='';await reload();say(`最後編號已調高，下一張從 #${sendState.last_number+1} 開始。`);
 }));
 document.querySelectorAll('[data-tab]').forEach(el=>el.addEventListener('click',()=>run(()=>{if(!mayLeave())return;closePanels();tab=el.dataset.tab;renderGallery();say('');})));
-await run(async()=>{
+if(location.hash==='#instagram-panel')location.replace('/admin/instagram/');
+else await run(async()=>{
   const session=await apiRequest('/api/auth/me',{headers:adminAuth.requestHeaders()});adminAuth.setSession(session);
   const user=adminAuth.identity();$('#studio-identity').textContent=`${user?.accessEmail??user?.username??'管理員'} · ${user?.role??''}`;
   await reload();
+  const batchId=new URLSearchParams(location.search).get('batch');
+  if(batchId){sendState=await request('/send?batchId='+encodeURIComponent(batchId));dispatch=structuredClone(sendState.batch);if(dispatch){tab='current';renderGallery();showDispatch();}else say('此批次已完成或不存在。');}
 });

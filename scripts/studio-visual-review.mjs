@@ -44,7 +44,7 @@ const context=await browser.newContext({viewport:{width:1440,height:1050},accept
 await context.addInitScript(token=>sessionStorage.setItem('anonymous-submissions.dev-admin-token',token),localToken);
 const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
 await page.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
-const idle=()=>page.waitForFunction(()=>!document.querySelector('#reload').disabled);
+const idle=()=>page.waitForFunction(()=>{const button=document.querySelector('#reload, #instagram-refresh');return button&&!button.disabled;});
 const checks=[];
 try{
  await page.goto(origin+'/admin/studio/');await idle();
@@ -108,7 +108,7 @@ try{
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:resolve(output,'dispatch-mobile.png'),fullPage:true});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.setViewportSize({width:1440,height:1050});
  let downloads=0;page.on('download',()=>downloads++);
- await page.evaluate(()=>{
+ const installShareMock=()=>{
   window.shareMode='success';window.shareCalls=[];
   Object.defineProperty(navigator,'canShare',{configurable:true,value:({files})=>window.shareMode!=='unsupported'&&files.every(f=>f.type==='image/png')});
   Object.defineProperty(navigator,'share',{configurable:true,value:({files})=>{
@@ -118,7 +118,8 @@ try{
    if(window.shareMode==='fail')return Promise.reject(new DOMException('fail','NotAllowedError'));
    return Promise.resolve();
   }});
- });
+ };
+ await context.addInitScript(installShareMock);await page.evaluate(installShareMock);
  assert.equal(await page.locator('#share-panel').count(),0);assert.equal(await page.locator('#download-dispatch').isVisible(),false);
  let uploads=0;const failUpload=async route=>{uploads++;if(uploads===2)await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:{message:'Test upload failure'}})});else await route.continue();};
  await page.route('**/api/admin/studio/send/image',failUpload);
@@ -167,8 +168,9 @@ try{
  assert.deepEqual(entries.slice(0,2).map(e=>createHash('sha256').update(e.data).digest('hex')),hashes);
  checks.push('each downloaded PNG byte-matches rendering of the server-locked number and source version');
  checks.push('ready selection, ordered immutable dispatch save, ZIP download');
- env.IG_PUBLISH_ENABLED='true';await page.evaluate(async()=>{document.querySelector('#instagram-refresh').click();});await idle();
- await page.locator('#instagram-panel summary').click();await page.locator('#instagram-refresh').click();await idle();
+ assert.equal(await page.locator('#instagram-panel').count(),0);
+ env.IG_PUBLISH_ENABLED='true';await page.goto(origin+'/admin/instagram/');await idle();
+ assert.equal(await page.locator('h1').innerText(),'IG 排程');
  await page.getByRole('button',{name:'整包排程',exact:true}).click();await idle();
  assert.equal(db.raw.prepare('SELECT count(*) n FROM instagram_queue').get().n,1);
  assert.equal(db.raw.prepare('SELECT publish_status FROM instagram_queue').get().publish_status,'pending');
@@ -178,8 +180,11 @@ try{
  await page.screenshot({path:resolve(output,'instagram-desktop.png'),fullPage:true});
  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:resolve(output,'instagram-mobile.png'),fullPage:true});
  await page.getByRole('button',{name:'取消整包排程',exact:true}).click();await idle();
- await page.locator('#instagram-panel summary').click();await page.setViewportSize({width:1280,height:900});
+ await page.setViewportSize({width:1280,height:900});
  env.IG_PUBLISH_ENABLED='false';await page.locator('#instagram-refresh').evaluate(el=>el.click());await idle();
+ assert.match(await page.locator('#instagram-list').innerText(),/目前暫停/);
+ const currentBatch=db.raw.prepare("SELECT id FROM send_batches WHERE state='prepared'").get().id;
+ await page.goto(origin+'/admin/studio/?batch='+encodeURIComponent(currentBatch));await idle();
  checks.push('IG schedules/cancels ONE batch with ordered JPEGs and shared immutable caption; desktop/mobile no overflow; no Meta requests');
  assert.equal(db.raw.prepare('SELECT last_number FROM send_progress').get().last_number,108);
  await page.screenshot({path:resolve(output,'prepared-desktop.png'),fullPage:true});
@@ -271,7 +276,7 @@ try{
  await page.getByRole('button',{name:'開啟本次發送',exact:true}).first().click();await idle();page.once('dialog',d=>d.accept());await page.locator('#cancel-send').click();await idle();
  assert.equal(await page.locator('#gallery article input[type=checkbox]').count(),1);
  checks.push('save two separate batches; reserved images disappear from ready; cancel returns one batch only; desktop/mobile no overflow');
- env.IG_PUBLISH_ENABLED='true';await page.locator('#instagram-refresh').evaluate(el=>el.click());await idle();
+ env.IG_PUBLISH_ENABLED='true';await page.locator('#reload').click();await idle();
  await page.getByRole('button',{name:'本次發送',exact:true}).click();await idle();
  await page.getByRole('button',{name:'開啟本次發送',exact:true}).click();await idle();
  page.once('dialog',d=>d.accept());await page.locator('#generate-images').click();await idle();

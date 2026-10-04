@@ -29,8 +29,10 @@ async function jpegFromFinal(item,generation){
 export function mountInstagram({run,say,onChange,onResume}){
  const panel=document.querySelector('#instagram-panel'),list=document.querySelector('#instagram-list');
  async function refresh(){
-  const data=await apiRequest('/api/admin/instagram',{headers:adminAuth.requestHeaders()});instagramEnabled=data.enabled;statuses.clear();for(const row of data.items)statuses.set(row.batch_id,row.publish_status);panel.hidden=!data.enabled;list.replaceChildren();if(!data.enabled)return;if(location.hash==='#instagram-panel')panel.open=true;
-  document.querySelector('#send-method-hint').textContent='設定時間後鎖定並產圖，自動加入 IG 佇列。鎖定後不能取消或重排；前一包未完成時，後面會等待。';
+  const data=await apiRequest('/api/admin/instagram',{headers:adminAuth.requestHeaders()});instagramEnabled=data.enabled;statuses.clear();for(const row of data.items)statuses.set(row.batch_id,row.publish_status);
+  const hint=document.querySelector('#send-method-hint');if(hint&&data.enabled)hint.textContent='設定時間後鎖定並產圖，自動加入 IG 佇列。發布狀態請到 IG 排程查看；鎖定後不能取消或重排。';
+  if(!panel)return;
+  list.replaceChildren();if(!data.enabled){list.textContent='Instagram 發布目前暫停。此頁不會啟用發布或排程。';return;}
   if(!data.items.length){list.textContent='請先在本次發送選圖並產生圖片，再將整包加入排程。';}
   for(const row of data.items){
    const card=document.createElement('article');card.className='studio-card';
@@ -66,6 +68,6 @@ export function mountInstagram({run,say,onChange,onResume}){
    list.append(card);
   }
  }
- document.querySelector('#instagram-refresh').addEventListener('click',()=>run(refresh));
+ document.querySelector('#instagram-refresh')?.addEventListener('click',()=>run(refresh));
  return refresh;
 }

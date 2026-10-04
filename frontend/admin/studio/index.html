@@ -8,7 +8,7 @@
 </head>
 <body class="studio-page">
   <main class="studio-main">
-    <header class="studio-header"><div><p class="kicker">DAAN ANONYMOUS</p><h1>圖片工作室</h1></div><a href="/admin/">返回投稿管理</a></header>
+    <header class="studio-header"><div><p class="kicker">DAAN ANONYMOUS</p><h1>圖片工作室</h1></div><nav aria-label="後台導覽"><a href="/admin/">投稿管理</a> · <a href="/admin/instagram/">IG 排程</a></nav></header>
     <p id="studio-identity"></p>
     <nav aria-label="製圖流程"><button data-tab="draft">圖片草稿</button><button data-tab="ready">待發送</button><button data-tab="current">本次發送</button><button data-tab="records">已發送紀錄</button><button data-tab="dispatch">歷史草稿</button></nav>
     <p id="send-progress" class="field__hint"></p>
@@ -21,7 +21,6 @@
     </details>
     <p id="studio-status" role="status" aria-live="polite"></p>
     <button id="reload">重新整理</button>
-    <details id="instagram-panel" class="studio-paper" hidden><summary>Instagram 排程</summary><p>本次發送整包發布成一篇貼文，圖片依目前排序、共用同一份內文。每五分鐘最多發布一包。</p><button id="instagram-refresh" type="button">更新發布狀態</button><div id="instagram-list" class="studio-grid"></div></details>
     <section id="gallery" class="studio-grid" aria-label="圖片列表"></section>
     <button id="compose" hidden>準備發送</button>
     <section id="editor" class="studio-paper" hidden aria-labelledby="editor-title">
