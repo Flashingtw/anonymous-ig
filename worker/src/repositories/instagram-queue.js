@@ -1,13 +1,14 @@
 import {HttpError} from '../errors.js';
 import {prepareAuditLog} from './audit-logs.js';
-import {instagramService,publishInstagramPost,InstagramError} from '../services/instagram.js';
+import {instagramService,prepareInstagramPost,publishInstagramPost,InstagramError,InstagramProcessing,InstagramExpired} from '../services/instagram.js';
 const q=(db,sql,...args)=>db.prepare(sql).bind(...args);
 const check=db=>q(db,'INSERT INTO send_assertion SELECT CASE WHEN changes()=1 THEN 1 ELSE 0 END');
 const fail=()=>{throw new HttpError(409,'IG_QUEUE_CONFLICT','整包狀態已變更、圖片不完整或部分已發送，請重新載入。');};
 const audit=(db,action,id,adminId=null)=>prepareAuditLog(db,{adminId,action,metadata:{batchId:id}});
 export const igEnabled=env=>env.IG_PUBLISH_ENABLED==='true';
 export async function listInstagram(db){
- return (await db.prepare(`SELECT b.id batch_id,b.auto_publish,coalesce(q.publish_status,'none') publish_status,q.publish_at,q.published_at,q.instagram_media_id,q.publish_attempts,q.publish_error,q.revision,q.uncertain,
+ return (await db.prepare(`SELECT b.id batch_id,b.auto_publish,coalesce(q.publish_status,'none') publish_status,q.publish_at,q.published_at,q.instagram_media_id,q.publish_attempts,q.publish_error,q.revision,q.uncertain,q.preparation_status,q.prepared_at,q.next_attempt_at,q.publish_started,
+ (b.state='prepared' AND q.publish_status IN ('pending','failed') AND q.publish_started=0 AND q.uncertain=0 AND q.instagram_media_id IS NULL AND q.lease_token IS NULL AND q.lease_until IS NULL) can_edit_caption,
  coalesce(q.item_count,(SELECT count(*) FROM send_items WHERE batch_id=b.id)) item_count,
  coalesce(q.first_number,(SELECT min(number) FROM send_items WHERE batch_id=b.id)) first_number,
  coalesce(q.last_number,(SELECT max(number) FROM send_items WHERE batch_id=b.id)) last_number
@@ -38,7 +39,7 @@ export async function scheduleInstagram(db,{id,revision,generation,publishAt,upl
    AND min(i.number)>=(SELECT last_number+1 FROM send_progress WHERE id=1) AND max(i.number)=min(i.number)+count(*)-1
    AND (SELECT count(*) FROM instagram_uploads u JOIN send_items x ON x.batch_id=u.batch_id AND x.position=u.position AND x.object_key=u.source_png_key WHERE u.batch_id=b.id AND u.generation=b.generation AND u.id IN (${marks}))=count(*)
    AND (SELECT count(DISTINCT position) FROM instagram_uploads WHERE id IN (${marks}))=count(*)
-   ON CONFLICT(batch_id) DO UPDATE SET generation=excluded.generation,first_number=excluded.first_number,last_number=excluded.last_number,item_count=excluded.item_count,publish_status='pending',publish_at=excluded.publish_at,published_caption=excluded.published_caption,editor_id=excluded.editor_id,revision=instagram_queue.revision+1,publish_attempts=0,publish_error=NULL,creation_id=NULL,publish_started=0,uncertain=0,image_expires_at=NULL
+   ON CONFLICT(batch_id) DO UPDATE SET generation=excluded.generation,first_number=excluded.first_number,last_number=excluded.last_number,item_count=excluded.item_count,publish_status='pending',publish_at=excluded.publish_at,published_caption=excluded.published_caption,editor_id=excluded.editor_id,revision=instagram_queue.revision+1,publish_attempts=0,publish_error=NULL,creation_id=NULL,publish_started=0,uncertain=0,image_expires_at=NULL,preparation_status='none',prepared_at=NULL,next_attempt_at=NULL
    WHERE instagram_queue.publish_status='none'`,time.toISOString(),principal.adminId??null,id,generation,uploads.length,...uploads,...uploads),check(db),
   ...uploads.map(upload=>q(db,`INSERT INTO instagram_items(batch_id,position,submission_id,number,published_image_key,source_png_key,image_token)
    SELECT u.batch_id,u.position,i.submission_id,i.number,u.object_key,u.source_png_key,? FROM instagram_uploads u JOIN send_items i ON i.batch_id=u.batch_id AND i.position=u.position WHERE u.id=?`,crypto.randomUUID(),upload)),
@@ -53,7 +54,7 @@ export async function editInstagram(db,id,command,revision,principal,now=new Dat
  if(!row||row.revision!==revision||row.uncertain||row.publish_started||!['pending','failed'].includes(row.publish_status))fail();
  if(command==='retry-publish'&&row.publish_status!=='failed')fail();
  await db.batch([
-  q(db,`UPDATE instagram_queue SET publish_status=?,publish_at=?,publish_error=NULL,publish_attempts=0,revision=revision+1 WHERE batch_id=? AND revision=? AND publish_status IN ('pending','failed') AND publish_started=0 AND uncertain=0`,command==='cancel-publish'?'none':'pending',now.toISOString(),id,revision),check(db),
+  q(db,`UPDATE instagram_queue SET publish_status=?,publish_at=?,publish_error=NULL,publish_attempts=0,preparation_status='none',prepared_at=NULL,next_attempt_at=NULL,revision=revision+1 WHERE batch_id=? AND revision=? AND publish_status IN ('pending','failed') AND publish_started=0 AND uncertain=0`,command==='cancel-publish'?'none':'pending',now.toISOString(),id,revision),check(db),
   ...(command==='retry-publish'?[q(db,'UPDATE instagram_queue SET creation_id=NULL WHERE batch_id=?',id),q(db,'UPDATE instagram_items SET creation_id=NULL WHERE batch_id=?',id)]:[]),
   ...(command==='cancel-publish'?[q(db,"INSERT OR IGNORE INTO send_uploads SELECT published_image_key,strftime('%Y-%m-%dT%H:%M:%fZ','now','+1 day') FROM instagram_items WHERE batch_id=?",id)]:[]),
   audit(db,command==='cancel-publish'?'ig_cancelled':'ig_retry',id,principal.adminId??null),db.prepare('DELETE FROM send_assertion')
@@ -75,12 +76,18 @@ async function finish(db,row,now){
   audit(db,'ig_published',row.batch_id,row.editor_id),db.prepare('DELETE FROM send_assertion')
  ]);
 }
-export async function processInstagramQueue(env,{now=new Date(),service,onlyId}={}){
+export async function processInstagramQueue(env,{now=new Date(),service,onlyId,wait}={}){
  if(!igEnabled(env))return {status:'disabled'};
- const db=env.DB,iso=now.toISOString(),lease=crypto.randomUUID(),until=new Date(now.getTime()+10*60000).toISOString();
- let row=await q(db,`UPDATE instagram_queue SET lease_token=?,lease_until=?,revision=revision+1 WHERE batch_id=(SELECT batch_id FROM instagram_queue WHERE publish_status='publishing' AND lease_until<=? LIMIT 1) RETURNING *`,lease,until,iso).first();
- if(!row)row=await q(db,`UPDATE instagram_queue SET publish_status='publishing',lease_token=?,lease_until=?,revision=revision+1 WHERE batch_id=(SELECT batch_id FROM instagram_queue WHERE publish_status='pending' AND publish_at<=? AND first_number=(SELECT last_number+1 FROM send_progress WHERE id=1) ORDER BY publish_at,batch_id LIMIT 1)
-  AND (? IS NULL OR batch_id=?) AND first_number=(SELECT last_number+1 FROM send_progress WHERE id=1) AND NOT EXISTS(SELECT 1 FROM instagram_queue WHERE publish_status='publishing') RETURNING *`,lease,until,iso,onlyId??null,onlyId??null).first();
+ const started=Date.now(),db=env.DB,iso=now.toISOString(),lease=crypto.randomUUID(),until=new Date(now.getTime()+10*60000).toISOString();
+ let row=await q(db,`UPDATE instagram_queue SET lease_token=?,lease_until=?,revision=revision+1 WHERE batch_id=(SELECT batch_id FROM instagram_queue WHERE publish_status='publishing' AND lease_until<=? AND (? IS NULL OR batch_id=?) LIMIT 1) RETURNING *`,lease,until,iso,onlyId??null,onlyId??null).first();
+ // The existing unique publishing index serializes both preparation and publication.
+ // Prioritize the due head; later batches may prepare, but can never publish out of order.
+ if(!row)row=await q(db,`UPDATE instagram_queue SET publish_status='publishing',lease_token=?,lease_until=?,revision=revision+1 WHERE batch_id=(
+  SELECT batch_id FROM instagram_queue WHERE publish_status='pending' AND publish_at<=?
+  AND (next_attempt_at IS NULL OR next_attempt_at<=?) AND (? IS NULL OR batch_id=?)
+  AND ((publish_at<=? AND first_number=(SELECT last_number+1 FROM send_progress WHERE id=1)) OR preparation_status<>'ready')
+  ORDER BY CASE WHEN publish_at<=? AND first_number=(SELECT last_number+1 FROM send_progress WHERE id=1) THEN 0 ELSE 1 END,publish_at,batch_id LIMIT 1)
+  AND NOT EXISTS(SELECT 1 FROM instagram_queue WHERE publish_status='publishing') RETURNING *`,lease,until,new Date(now.getTime()+15*60000).toISOString(),iso,onlyId??null,onlyId??null,iso,iso).first();
  if(!row)return {status:'idle'};
  const save=async(sql,...args)=>{const r=await q(db,sql,...args,row.batch_id,lease).run();if(r.meta.changes!==1)throw Error('Lease lost');};
  if(row.instagram_media_id){await finish(db,row,iso);return {status:'published'};}
@@ -90,19 +97,50 @@ export async function processInstagramQueue(env,{now=new Date(),service,onlyId}=
   await save('UPDATE instagram_queue SET image_expires_at=? WHERE batch_id=? AND lease_token=?',new Date(now.getTime()+24*3600000).toISOString());
   const images=(await q(db,'SELECT * FROM instagram_items WHERE batch_id=? ORDER BY position',row.batch_id).all()).results.map(i=>({...i,imageUrl:`${origin.origin}/api/instagram-media/${i.image_token}.jpg`}));
   if(images.length!==row.item_count)throw new InstagramError('整包圖片不完整。');
-  const mediaId=await publishInstagramPost({images,caption:row.published_caption,creationId:row.creation_id,
+  const adapter=service??instagramService(env),guarded={};
+  // Renew/check the lease before every Meta call, including after polling waits.
+  // If a different invocation reclaimed it, stop before another external action.
+  for(const method of ['create','createCarousel','status','publish'])guarded[method]=async(...args)=>{
+   await save('UPDATE instagram_queue SET lease_until=? WHERE batch_id=? AND lease_token=?',new Date(now.getTime()+Date.now()-started+10*60000).toISOString());
+   return adapter[method](...args);
+  };
+  const head=await db.prepare('SELECT last_number+1 next_number FROM send_progress WHERE id=1').first();
+  const mayPublish=row.publish_at<=iso&&row.first_number===head.next_number;
+  await save("UPDATE instagram_queue SET preparation_status='processing',prepared_at=NULL WHERE batch_id=? AND lease_token=?");
+  const input={images,caption:row.published_caption,creationId:row.creation_id,
    onChildCreated:async(position,id)=>{const r=await q(db,'UPDATE instagram_items SET creation_id=? WHERE position=? AND batch_id=? AND EXISTS(SELECT 1 FROM instagram_queue WHERE batch_id=? AND lease_token=?)',id,position,row.batch_id,row.batch_id,lease).run();if(r.meta.changes!==1)throw Error('Lease lost');},
    onCreated:async id=>{await save('UPDATE instagram_queue SET creation_id=? WHERE batch_id=? AND lease_token=?',id);},
-   onPublishing:async()=>{await save('UPDATE instagram_queue SET publish_started=1 WHERE batch_id=? AND lease_token=?');row.publish_started=1;}
-  },service??instagramService(env));
+   onPrepared:async()=>{await save("UPDATE instagram_queue SET preparation_status='ready',prepared_at=?,publish_error=NULL,next_attempt_at=NULL WHERE batch_id=? AND lease_token=?",new Date(now.getTime()+Date.now()-started).toISOString());},
+   onPublishing:async()=>{await save("UPDATE instagram_queue SET publish_started=1 WHERE publish_at<=? AND first_number=(SELECT last_number+1 FROM send_progress WHERE id=1) AND publish_status='publishing' AND batch_id=? AND lease_token=?",iso);row.publish_started=1;}
+  };
+  if(!mayPublish){
+   await prepareInstagramPost(input,guarded,{wait});
+   await save("UPDATE instagram_queue SET publish_status='pending',lease_token=NULL,lease_until=NULL,revision=revision+1 WHERE batch_id=? AND lease_token=?");
+   return {status:'prepared'};
+  }
+  const mediaId=await publishInstagramPost(input,guarded,{wait});
   await save('UPDATE instagram_queue SET instagram_media_id=? WHERE batch_id=? AND lease_token=?',mediaId);
-  row.instagram_media_id=mediaId;await finish(db,row,iso);return {status:'published'};
+  row.instagram_media_id=mediaId;await finish(db,row,new Date(now.getTime()+Date.now()-started).toISOString());return {status:'published'};
  }catch(error){
   if(row.instagram_media_id)throw Error('IG receipt saved; ledger recovery pending');
+  if(error instanceof InstagramExpired&&!row.publish_started){
+   // Only a definite EXPIRED status is safe to recreate. Never reset an ambiguous publish.
+   await db.batch([
+    q(db,"UPDATE instagram_queue SET publish_status='pending',preparation_status='none',prepared_at=NULL,creation_id=NULL,publish_error=?,next_attempt_at=NULL,lease_token=NULL,lease_until=NULL,revision=revision+1 WHERE batch_id=? AND lease_token=? AND publish_started=0 AND uncertain=0",error.message,row.batch_id,lease),check(db),
+    q(db,'UPDATE instagram_items SET creation_id=NULL WHERE batch_id=?',row.batch_id),
+    audit(db,'ig_container_expired',row.batch_id),db.prepare('DELETE FROM send_assertion')
+   ]);return {status:'pending'};
+  }
+  if(error instanceof InstagramProcessing){
+   // Processing is not a failed publish. Keep schedule/attempts/container IDs;
+   // release the lease so the next Cron can continue if Meta takes longer.
+   await save("UPDATE instagram_queue SET publish_status='pending',publish_error=?,lease_token=NULL,lease_until=NULL,revision=revision+1 WHERE batch_id=? AND lease_token=?",error.message);
+   return {status:'pending'};
+  }
   const uncertain=Boolean(error.ambiguous||(row.publish_started&&!(error instanceof InstagramError))),attempt=row.publish_attempts+1;
   const message=uncertain?'發布結果不明，請人工核對 Instagram；禁止直接重試。':error instanceof InstagramError?error.message:'發文服務暫時無法使用。';
   await db.batch([
-   q(db,`UPDATE instagram_queue SET publish_status=?,publish_attempts=?,publish_error=?,publish_at=?,uncertain=?,publish_started=?,lease_token=NULL,lease_until=NULL,revision=revision+1 WHERE batch_id=? AND lease_token=?`,uncertain||attempt>=3?'failed':'pending',attempt,message,new Date(now.getTime()+(attempt===1?5:15)*60000).toISOString(),Number(uncertain),Number(uncertain),row.batch_id,lease),check(db),
+   q(db,`UPDATE instagram_queue SET publish_status=?,publish_attempts=?,publish_error=?,next_attempt_at=?,uncertain=?,publish_started=?,lease_token=NULL,lease_until=NULL,revision=revision+1 WHERE batch_id=? AND lease_token=?`,uncertain||attempt>=3?'failed':'pending',attempt,message,new Date(now.getTime()+(attempt===1?5:15)*60000).toISOString(),Number(uncertain),Number(uncertain),row.batch_id,lease),check(db),
    audit(db,'ig_failed',row.batch_id),db.prepare('DELETE FROM send_assertion')
   ]);return {status:uncertain||attempt>=3?'failed':'pending'};
  }

@@ -49,7 +49,9 @@
       <p id="send-method-hint">可保存多組，每組 1–10 張；一次鎖定一組正式編號。下載後請手動上傳 IG，再回來確認。</p>
       <p id="send-stage" role="status"></p>
       <ol id="dispatch-items"></ol>
-      <label for="caption">貼文說明</label><textarea id="caption" rows="5" placeholder="這組圖片的貼文說明⋯"></textarea><p id="caption-count">0 / 2000</p>
+      <label for="custom-caption">自訂文字（選填）</label><textarea id="custom-caption" rows="3" placeholder="會放在鎖頭上方⋯" aria-describedby="caption-help"></textarea>
+      <p id="caption-help">下方模板自動產生；日期與英文星期依預定發布時間（台灣時間），編號依圖片順序。</p>
+      <label for="caption">完整貼文預覽</label><textarea id="caption" rows="8" readonly></textarea><p id="caption-count">0 / 2000</p>
       <div class="studio-actions secondary-actions"><button id="copy-caption" type="button">複製內文</button></div>
       <fieldset id="publish-time-control" hidden>
         <legend>預定發布時間（本機時區）</legend>

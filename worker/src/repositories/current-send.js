@@ -2,7 +2,7 @@ import {HttpError} from '../errors.js';
 import {prepareAuditLog} from './audit-logs.js';
 import {validItems} from '../../../frontend/admin/studio/model.js';
 import {graphemeLength} from '../../../frontend/assets/graphemes.js';
-import {syncDefaultCaption} from '../../../frontend/admin/studio/caption.js';
+import {customCaption,scheduledCaption} from '../../../frontend/admin/studio/caption.js';
 const fail=(message,status=409)=>{throw new HttpError(status,'SEND_CONFLICT',message);};
 const stmt=(db,sql,...args)=>db.prepare(sql).bind(...args);
 const assert=(db,sql,...args)=>stmt(db,`INSERT INTO send_assertion SELECT CASE WHEN (${sql}) THEN 1 ELSE 0 END`,...args);
@@ -62,7 +62,8 @@ export async function changeSend(db,command,body,principal){
    if(automatic){
     const time=typeof body.publishAt==='string'?new Date(body.publishAt):new Date(NaN);
     if(!Number.isFinite(time.getTime()))fail('請選擇有效發布時間。',400);
-    const caption=syncDefaultCaption(b.caption,b.items.map((_,i)=>state.next_number+i));
+    const caption=scheduledCaption(customCaption(b.caption),b.items.map((_,i)=>state.next_number+i),time);
+    if(graphemeLength(caption)>2000)fail('自訂文字加上模板後，貼文說明最多 2000 字。',400);
     statements.push(stmt(db,'UPDATE send_items SET number=?+position WHERE batch_id=?',state.next_number,b.id));
     statements.push(stmt(db,"UPDATE send_batches SET state='prepared',generation=?,auto_publish=1,publish_at=?,caption=? WHERE id=?",generation,time.toISOString(),caption,b.id));
     statements.push(stmt(db,`INSERT INTO instagram_queue(batch_id,generation,first_number,last_number,item_count,publish_status,publish_at,published_caption,editor_id) VALUES(?,?,?,?,?,'none',?,?,?)`,b.id,generation,state.next_number,state.next_number+b.items.length-1,b.items.length,time.toISOString(),caption,principal.adminId??null));

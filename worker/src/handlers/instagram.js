@@ -3,6 +3,7 @@ import {jsonResponse,methodNotAllowed} from '../http.js';
 import {verifyAdminCsrf} from '../auth.js';
 import {parseJsonObject} from '../validation.js';
 import {igEnabled,listInstagram,stageInstagramImage,scheduleInstagram,editInstagram,processInstagramQueue} from '../repositories/instagram-queue.js';
+import {readInstagramCaption,updateInstagramCaption} from '../repositories/instagram-captions.js';
 export async function instagramMedia(request,env,token){
  if(request.method!=='GET')return methodNotAllowed(['GET']);
  if(!igEnabled(env)||!/^[a-f0-9-]{36}$/.test(token))throw new HttpError(404,'NOT_FOUND','找不到圖片。');
@@ -29,6 +30,14 @@ async function readJpeg(request){
 export async function instagramHandler(request,env,principal,path,dependencies={}){
  if(!igEnabled(env))return jsonResponse({ok:true,data:{enabled:false,items:[]}}, {status:request.method==='GET'?200:503});
  if(path==='/api/admin/instagram'&&request.method==='GET')return jsonResponse({ok:true,data:{enabled:true,items:await listInstagram(env.DB)}});
+ const captionPath=path.match(/^\/api\/admin\/instagram\/batches\/([a-zA-Z0-9-]+)\/caption$/);
+ if(captionPath){
+  if(request.method==='GET')return jsonResponse({ok:true,data:await readInstagramCaption(env.DB,captionPath[1])});
+  if(request.method!=='POST')return methodNotAllowed(['GET','POST']);
+  await verifyAdminCsrf(request,principal,env);
+  const body=await parseJsonObject(request,{allowedKeys:['revision','customText'],maxBytes:65536});
+  return jsonResponse({ok:true,data:await updateInstagramCaption(env.DB,captionPath[1],body,principal)});
+ }
  if(request.method!=='POST')return methodNotAllowed(['POST']);
  await verifyAdminCsrf(request,principal,env);
  const match=path.match(/^\/api\/admin\/instagram\/batches\/([a-zA-Z0-9-]+)\/(image|schedule|publish-now|retry-publish|cancel-publish)$/);if(!match)throw new HttpError(404,'NOT_FOUND','找不到 API。');

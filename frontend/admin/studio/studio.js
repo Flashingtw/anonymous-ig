@@ -5,7 +5,7 @@ import {loadStudioAssets,paint,autoLayout,exportPng} from './canvas.js';
 import {WIDTH,HEIGHT,validItems,numberLabel} from './model.js';
 import {makeZip} from './zip.js';
 import {snapPosition} from './alignment.js';
-import {defaultCaption,syncDefaultCaption} from './caption.js';
+import {defaultCaption,customCaption,scheduledCaption} from './caption.js';
 import {createImageShare} from './share.js';
 import {mountInstagram,completeInstagramBatch,instagramEnabled,instagramStatus} from './instagram.js';
 import {mountScheduleTime,suggestedTime,localMinute} from './schedule-time.js';
@@ -14,7 +14,7 @@ const base='/api/admin/studio';
 let tab='draft',listing={drafts:[],approved:[],dispatches:[]},sendState={last_number:108,revision:1,batch:null},records=[],assets,doc,dispatch,selected='body',dirty=false,dispatchDirty=false,busy=false,drag;
 const selection=new Set();let guides={};
 let assetLoading;
-const scheduleTime=mountScheduleTime($('#publish-time-control'),value=>{if(dispatch)dispatch.proposedPublishAt=value;});
+const scheduleTime=mountScheduleTime($('#publish-time-control'),value=>{if(dispatch){dispatch.proposedPublishAt=value;updateCaption();sync();}});
 async function getAssets(){if(assets)return assets;if(!assetLoading)assetLoading=loadStudioAssets().then(value=>assets=value).finally(()=>{assetLoading=null;});return assetLoading;}
 const canvas=$('#image-canvas'),ctx=canvas.getContext('2d');
 const say=text=>{$('#studio-status').textContent=text;};
@@ -229,9 +229,17 @@ async function numberedPreview(img,item,number){
  try{await getAssets();const layout=structuredClone(item.layout);layout.number.label=String(number);const blob=await exportPng(assets,{id:item.submission_id,text:item.text,layout});const url=URL.createObjectURL(blob);if(!img.isConnected){URL.revokeObjectURL(url);return;}img.onload=img.onerror=()=>URL.revokeObjectURL(url);img.src=url;}catch{img.alt='編號預覽無法產生，請檢查字型或排版後重試。';}
 }
 async function openDispatch(id){if(!mayLeave())return;const data=await request('/dispatches/'+id);closePanels();dispatch={...data,historical:true};showDispatch();}
+function updateCaption(){
+  if(!dispatch||dispatch.historical||dispatch.state!=='editing')return;
+  dispatch.customText??=customCaption(dispatch.caption);
+  const date=instagramEnabled?new Date($('#publish-time').value):new Date();
+  if(!Number.isFinite(date.getTime()))return;
+  const caption=scheduledCaption(dispatch.customText,dispatch.items.map((_,i)=>sendState.next_number+i),date);
+  if(caption!==dispatch.caption){dispatch.caption=caption;dispatchDirty=true;}
+  $('#caption').value=caption;
+}
 function showDispatch(){
   clearShare();
-  if(!dispatch.historical&&dispatch.state==='editing'){const caption=syncDefaultCaption(dispatch.caption,dispatch.items.map((item,index)=>sendState.next_number+index));if(caption!==dispatch.caption){dispatch.caption=caption;dispatchDirty=true;}}
   $('#dispatch-editor').hidden=false;$('#caption').value=dispatch.caption;const list=$('#dispatch-items');list.replaceChildren();
   const historical=dispatch.historical,locked=dispatch.state==='prepared',remaining=dispatch.items.filter(i=>!i.confirmed),complete=locked&&remaining.every(i=>i.object_key);
   $('#dispatch-title').textContent=historical?'歷史草稿（唯讀）':'本次發送';
@@ -239,7 +247,11 @@ function showDispatch(){
   $('#publish-time-control').hidden=historical||!instagramEnabled;
   scheduleTime.set(dispatch.proposedPublishAt??(dispatch.publish_at?localMinute(dispatch.publish_at):suggestedTime(sendState.last_publish_at)),locked||historical);
   $('#schedule-time-hint').textContent=locked?'時間已鎖定，不可修改。':sendState.last_publish_at?`上次設定：${new Date(sendState.last_publish_at).toLocaleString()}。下一包預設 +1 小時；若已過期則使用現在。可自行調整，成功鎖定後才記住。`:'尚無排程紀錄，預設現在。成功鎖定後，下一包自動接續 +1 小時。';
-  $('#caption').readOnly=Boolean(locked||historical);
+  $('#caption').readOnly=true;
+  $('#custom-caption').value=dispatch.customText??customCaption(dispatch.caption);
+  $('#custom-caption').readOnly=Boolean(locked||historical);
+  $('#caption-help').textContent=locked||historical?'此批次已保存固定文案，不會隨日期或重試改變。':'下方模板自動產生；日期與英文星期依預定發布時間（台灣時間），編號依圖片順序。';
+  updateCaption();
   $('#save-dispatch').hidden=locked;$('#save-dispatch').textContent=historical?'複製到本次發送':'保存本次發送';
   $('#reset-send').hidden=Boolean(dispatch.auto_publish)||!locked||dispatch.items.some(i=>i.confirmed);$('#cancel-send').hidden=Boolean(dispatch.auto_publish)||historical||!dispatch.id;
   $('#confirm-controls').hidden=Boolean(dispatch.auto_publish)||!complete;$('#confirm-count').max=remaining.length;
@@ -260,6 +272,8 @@ function showDispatch(){
   });if(complete&&!historical)outputLoading=loadFinalFiles();sync();
 }
 async function saveDispatch(){
+  if(!dispatch.historical&&dispatch.state==='editing'&&instagramEnabled&&!Number.isFinite(new Date($('#publish-time').value).getTime()))throw new Error('請選擇有效發布時間。');
+  updateCaption();
   const items=dispatch.items.map(i=>i.version_id);
   if(!validItems(items)||graphemeLength(dispatch.caption)>2000)throw new Error('請選取 1–10 張不重複圖片，說明最多 2000 字。');
   const proposedPublishAt=$('#publish-time').value;
@@ -273,8 +287,7 @@ $('#compose').addEventListener('click',()=>run(()=>{
   if(!mayLeave())return;closePanels();
   dispatch={state:'editing',caption:defaultCaption([...selection].map((id,index)=>sendState.next_number+index)),items:[...selection].map(id=>{const row=listing.drafts.find(d=>d.version_id===id);return {version_id:id,submission_id:row?.id,text:row?.text,layout:row?.layout};})};dispatchDirty=true;showDispatch();$('#dispatch-editor').scrollIntoView({behavior:'smooth'});say('請確認順序並填寫貼文說明。');
 }));
-$('#caption').addEventListener('input',()=>{if(dispatch){dispatch.caption=$('#caption').value;dispatchDirty=true;sync();}});
-$('#publish-time').addEventListener('input',()=>{if(dispatch)dispatch.proposedPublishAt=$('#publish-time').value;});
+$('#custom-caption').addEventListener('input',()=>{if(dispatch&&!dispatch.historical&&dispatch.state==='editing'){dispatch.customText=$('#custom-caption').value;dispatchDirty=true;updateCaption();sync();}});
 $('#copy-caption').addEventListener('click',async()=>{
  if(busy)return;const field=$('#caption'),text=field.value;if(!text.trim())return;
  try{await navigator.clipboard.writeText(text);say('已複製內文。');}

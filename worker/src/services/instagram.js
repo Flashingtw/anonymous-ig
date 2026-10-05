@@ -2,6 +2,12 @@
 export class InstagramError extends Error {
  constructor(message,{ambiguous=false}={}){super(message);this.name='InstagramError';this.ambiguous=ambiguous;}
 }
+export class InstagramProcessing extends InstagramError {
+ constructor(){super('Meta 圖片處理中，將繼續檢查；尚未發布。');this.name='InstagramProcessing';}
+}
+export class InstagramExpired extends InstagramError {
+ constructor(){super('Meta 圖片準備已過期，將重新準備；尚未發布。');this.name='InstagramExpired';}
+}
 export function instagramConfig(env){
  if(!env.IG_ACCESS_TOKEN||!/^\d+$/.test(env.IG_USER_ID??'')||!/^v\d+\.\d+$/.test(env.IG_API_VERSION??''))throw new InstagramError('Instagram 尚未設定完整。');
  return {origin:`https://graph.instagram.com/${env.IG_API_VERSION}`,user:env.IG_USER_ID,token:env.IG_ACCESS_TOKEN};
@@ -28,12 +34,23 @@ export function instagramService(env,fetcher=fetch){
  };
 }
 // Durable callbacks are awaited before advancing to the next external side effect.
-async function ready(service,id){
- const status=await service.status(id);
- if(status==='IN_PROGRESS')throw new InstagramError('Meta 正在處理圖片，稍後重試。');
- if(status!=='FINISHED')throw new InstagramError('Meta container 無法發布，請核對 Instagram。',{ambiguous:status==='PUBLISHED'});
+async function ready(service,ids,poll){
+ let pending=ids;
+ for(;;){
+  const statuses=await Promise.all(pending.map(async id=>({id,status:await service.status(id)})));
+  if(statuses.some(item=>item.status==='PUBLISHED'))throw new InstagramError('Meta container 已發布，請核對 Instagram。',{ambiguous:true});
+  if(statuses.some(item=>item.status==='EXPIRED'))throw new InstagramExpired();
+  for(const {status}of statuses)if(!['FINISHED','IN_PROGRESS'].includes(status))throw new InstagramError('Meta container 無法發布，請核對 Instagram。');
+  pending=statuses.filter(item=>item.status==='IN_PROGRESS').map(item=>item.id);
+  if(!pending.length)return;
+  // Shared budget for children + parent, not five minutes per image.
+  if(poll.remaining--<=0)throw new InstagramProcessing();
+  await poll.wait(60000);
+ }
 }
-export async function publishInstagramPost({images,caption,creationId,onChildCreated,onCreated,onPublishing},service){
+// Preparation deliberately has no publish call, even if polling crosses the due time.
+export async function prepareInstagramPost({images,caption,creationId,onChildCreated,onCreated,onPrepared},service,{wait=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
+ const poll={remaining:4,wait};
  let id=creationId;
  if(!id){
   if(images.length===1){id=await service.create({imageUrl:images[0].imageUrl,caption});}
@@ -44,10 +61,14 @@ export async function publishInstagramPost({images,caption,creationId,onChildCre
     if(!image.creation_id)await onChildCreated(image.position,child);
     children.push(child);
    }
-   for(const child of children)await ready(service,child);
+   await ready(service,children,poll);
    id=await service.createCarousel({children,caption});
   }
   await onCreated(id);
  }
- await ready(service,id);await onPublishing();return service.publish(id);
+ await ready(service,[id],poll);await onPrepared?.();return id;
+}
+export async function publishInstagramPost(input,service,options){
+ const id=await prepareInstagramPost(input,service,options);
+ await input.onPublishing();return service.publish(id);
 }

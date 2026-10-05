@@ -203,7 +203,7 @@ export async function routeApi(request, env, dependencies = {}) {
     return adminDirectoryHandler(request, env, principal);
   }
 
-  if(pathname==='/api/admin/instagram'||/^\/api\/admin\/instagram\/batches\/[a-zA-Z0-9-]+\/(image|schedule|publish-now|retry-publish|cancel-publish)$/.test(pathname))return instagramHandler(request,env,principal,pathname,dependencies);
+  if(pathname==='/api/admin/instagram'||/^\/api\/admin\/instagram\/batches\/[a-zA-Z0-9-]+\/(image|schedule|publish-now|retry-publish|cancel-publish|caption)$/.test(pathname))return instagramHandler(request,env,principal,pathname,dependencies);
 
   if (pathname === "/api/admin/studio" || pathname.startsWith("/api/admin/studio/")) {
     return imageStudioHandler(request, env, principal, pathname);

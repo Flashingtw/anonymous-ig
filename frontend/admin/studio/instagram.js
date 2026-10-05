@@ -1,6 +1,15 @@
 import {apiRequest} from '../../assets/api.js';
 import {adminAuth} from '../../assets/admin-auth.js';
+import {mountCaptionEditor} from './instagram-caption-editor.js';
 const labels={none:'未排程',pending:'等待發布',publishing:'發布中',published:'已發布',failed:'發布失敗'};
+function queueLabel(row){
+ if(row.auto_publish&&row.publish_status==='none')return '待完成產圖／上傳';
+ if(['pending','publishing'].includes(row.publish_status)&&!row.publish_started){
+  if(row.preparation_status==='ready')return '已準備，等待發布';
+  if(row.preparation_status==='processing')return 'Meta 圖片處理中';
+ }
+ return labels[row.publish_status];
+}
 export let instagramEnabled=false;
 const statuses=new Map();
 export const instagramStatus=id=>statuses.get(id);
@@ -28,6 +37,7 @@ async function jpegFromFinal(item,generation){
 }
 export function mountInstagram({run,say,onChange,onResume}){
  const panel=document.querySelector('#instagram-panel'),list=document.querySelector('#instagram-list');
+ const editCaption=panel?mountCaptionEditor({onSaved:refresh,say}):null;
  async function refresh(){
   const data=await apiRequest('/api/admin/instagram',{headers:adminAuth.requestHeaders()});instagramEnabled=data.enabled;statuses.clear();for(const row of data.items)statuses.set(row.batch_id,row.publish_status);
   const hint=document.querySelector('#send-method-hint');if(hint&&data.enabled)hint.textContent='設定時間後鎖定並產圖，自動加入 IG 佇列。發布狀態請到 IG 排程查看；鎖定後不能取消或重排。';
@@ -36,9 +46,11 @@ export function mountInstagram({run,say,onChange,onResume}){
   if(!data.items.length){list.textContent='請先在本次發送選圖並產生圖片，再將整包加入排程。';}
   for(const row of data.items){
    const card=document.createElement('article');card.className='studio-card';
-   const title=document.createElement('h3');title.textContent=`本次發送 #${row.first_number}–#${row.last_number} · ${row.item_count} 張 · ${row.auto_publish&&row.publish_status==='none'?'待完成產圖／上傳':labels[row.publish_status]}`;
+   const title=document.createElement('h3');title.textContent=`本次發送 #${row.first_number}–#${row.last_number} · ${row.item_count} 張 · ${queueLabel(row)}`;
    const info=document.createElement('p');info.textContent=`預定：${row.publish_at?new Date(row.publish_at).toLocaleString():'—'} · 發布：${row.published_at?new Date(row.published_at).toLocaleString():'—'} · 失敗次數：${row.publish_attempts??0} · IG ID：${row.instagram_media_id??'—'}`;
    card.append(title,info);if(row.publish_error){const error=document.createElement('p');error.textContent=row.publish_error;card.append(error);}
+   if(row.can_edit_caption){const edit=document.createElement('button');edit.type='button';edit.textContent='修改內文';edit.addEventListener('click',()=>void editCaption(row.batch_id));card.append(edit);}
+   if(row.next_attempt_at&&row.publish_status==='pending'){const retry=document.createElement('p');retry.textContent=`下次重試：${new Date(row.next_attempt_at).toLocaleString()}`;card.append(retry);}
    const time=document.createElement('input');time.type='datetime-local';time.setAttribute('aria-label',`整包 ${row.first_number}–${row.last_number} 發布時間`);const date=new Date(Date.now()+5*60000);time.value=new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);
    if(row.publish_status==='none'&&!row.auto_publish)card.append(time);
    const add=(text,command)=>{const button=document.createElement('button');button.textContent=text;button.type='button';button.addEventListener('click',()=>run(async()=>{

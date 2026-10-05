@@ -1,5 +1,5 @@
 const ALLOWED_ACTIONS = new Set([
-  'ig_scheduled','ig_retry','ig_cancelled','ig_published','ig_failed',
+  'ig_scheduled','ig_retry','ig_cancelled','ig_published','ig_failed','ig_container_expired','ig_caption_updated',
   "studio_item_removed",
   "send_number_adjust",
   "send_save", "send_prepare", "send_reset", "send_cancel", "send_confirm", "send_image",

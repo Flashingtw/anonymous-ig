@@ -19,6 +19,16 @@
 .studio-card,.studio-paper { background:#f2eee3;color:#292a25;padding:20px;border-top:3px solid #b65427;min-width:0; }
 .studio-card img { width:100%;aspect-ratio:4/5;object-fit:contain;background:#ddd6c9; }
 .studio-card p { overflow-wrap:anywhere; }
+#ig-caption-editor { box-sizing:border-box;width:min(680px,calc(100% - 24px));max-height:90dvh;padding:0;border:1px solid #aaa18e;border-top:3px solid #b65427; }
+#ig-caption-editor[open] { display:flex;flex-direction:column; }
+#ig-caption-editor .caption-edit-body { overflow:auto;min-height:0;padding:20px; }
+#ig-caption-editor .studio-actions { flex-shrink:0;margin:0;padding:12px 20px;border-top:1px solid #cec7b8; }
+#ig-caption-editor::backdrop { background:rgb(0 0 0 / .65); }
+#ig-caption-editor label { display:block;margin:14px 0 6px; }
+#ig-caption-editor textarea { box-sizing:border-box;width:100%; }
+#ig-caption-original { white-space:pre-wrap;overflow-wrap:anywhere; }
+#ig-caption-editor input[type=checkbox] { width:22px;min-height:22px;vertical-align:middle; }
+#ig-caption-error { color:#9b3428; }
 .studio-card input { width:22px;vertical-align:middle; }
 .editor-grid { display:grid;grid-template-columns:minmax(0,1.1fr) minmax(260px,1fr);gap:24px; }
 .canvas-wrap { min-width:0; }

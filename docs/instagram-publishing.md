@@ -1,5 +1,117 @@
 # Instagram batch / carousel publishing
 
+## Local follow-up: scheduled captions and advance preparation (2026-10-05)
+
+These changes are local-only pending a separate deployment approval. The new additive
+`0013_instagram_preparation.sql` and `0014_instagram_caption_edits.sql` migrations are **not applied in production**. No dependency
+update, production queue rewrite, Cron change or live Meta test is performed by this patch.
+
+- The editor exposes **自訂文字（選填）** and a read-only full caption preview. Custom
+  text precedes the lock emoji; date/English weekday use the scheduled instant in
+  `Asia/Taipei`, and number lines follow the selected/locked order. Changing the
+  date or time updates the preview immediately. The backend independently regenerates
+  and validates the full 2,000-grapheme caption before the atomic automatic lock.
+- The existing caption column stores the composed text. Reopening an editable draft
+  extracts notes around the exact known template; other legacy text is retained as
+  custom text. Deploying or opening an editor does **not** rewrite existing snapshots.
+  Eligible unstarted queued captions can now be explicitly edited as described below;
+  published captions remain immutable.
+- Root cause of the regular five-minute delay: `IN_PROGRESS` was thrown as an ordinary
+  `InstagramError`, which consumed a failure attempt and moved `publish_at` five minutes.
+  It is now a processing state. Readiness polls unfinished children together and then
+  the parent, at one-minute intervals with four waits shared across the entire invocation.
+  The same containers are reused. Ready images publish in that invocation, without the
+  fixed failure backoff. Long processing returns to pending with unchanged schedule
+  and failure count; the next Cron resumes it. Real errors retain the existing retry
+  budget; ambiguous publishing still stops for manual investigation.
+- The publisher renews/checks its lease before each Meta request, including after waits.
+  Concurrent invocations cannot claim its batch. Losing the lease prevents subsequent
+  external calls. Publication timestamps include the time spent processing.
+- The same five-minute Cron also claims one batch within **15 minutes before its requested
+  time**. `prepareInstagramPost` creates/checks containers but cannot call `media_publish`.
+  D1 persists `preparation_status` (`none`, `processing`, `ready`) and `prepared_at`.
+  Ready future batches are skipped until due, so subsequent checks can prepare other batches.
+  The UI distinguishes **Meta 圖片處理中** and **已準備，等待發布**. This is media readiness,
+  not a guarantee that Meta will approve publication or finish at an exact time.
+- At or after the requested time, the due next-number batch takes priority. Its existing
+  container is rechecked before publishing. A second D1 due/head/lease guard persists publish
+  intent before the external call. Preparing a later-numbered batch never advances numbers;
+  an incomplete/failed earlier batch still blocks its publication. Each Cron handles at most
+  one batch and publishes at most one post. A preparation invocation that crosses the due
+  time still does not publish; the next invocation handles it.
+- Genuine transient errors now set `next_attempt_at` separately (5/15-minute backoff),
+  preserving requested `publish_at` and its immutable caption. Three failures still stop
+  for manual retry; normal processing does not consume the failure budget. Existing saved
+  dates are preserved, including any already altered by old production retry behavior.
+- A definite `EXPIRED` response before publish intent atomically clears parent/child
+  container IDs and readiness, with an `ig_container_expired` audit event. A subsequent
+  Cron recreates them using the same image/caption/number snapshots. An ambiguous or
+  `PUBLISHED` response never takes this reset path. Expiration is handled by reported
+  status rather than assuming an exact container lifetime. No old R2 images are deleted.
+- This is not exact-to-the-minute scheduling: the existing five-minute Cron cadence,
+  earlier numbered batches and Meta processing/network time can still delay publication.
+  Cron and background rendering are unchanged.
+
+Regression coverage includes Monday-to-Tuesday Taiwan rollover, custom prefix and
+legacy notes, server-side caption/number snapshots and length rejection, normal
+processing without a failed audit/backoff, bounded waits, 15-minute eligibility, future
+ready reuse, child/parent/single-image paths, lease loss/concurrency, expiration/audit
+rollback, due-head priority, genuine errors, and uncertain outcomes. Migration replay
+checks existing snapshots/receipts/FKs and legacy authentication compatibility. The isolated
+browser review covers time changes, save/reopen, copy/ZIP equality, ready/processing status,
+keyboard refresh, and desktop/mobile without horizontal overflow.
+
+### Future rollout gate (not authorized by this local patch)
+
+1. Approve an exact tested checkpoint; inspect production queue/state and obtain a fresh
+   private D1 Time Travel bookmark before any schema mutation.
+2. Apply only missing `0013` / `0014` after approval; they add readiness fields and guarded
+   caption-edit history, without rewriting existing rows. Validate FKs, data snapshots and
+   old Worker compatibility before deploying new code. Do not deploy before both migrations.
+3. Deploy with the existing runtime settings/secrets/bindings preserved; do not use the
+   repository's placeholder production vars. Cron remains every five minutes.
+4. Separately approve live acceptance with a selected batch: observe processing/ready before
+   due, no early post or number movement, then one correctly numbered post after due. Confirm
+   original scheduled Taiwan date/English weekday and custom text above the lock emoji.
+5. If Meta's result is uncertain, stop and manually verify IG; never blindly reset or retry.
+   Existing captions change only when an admin explicitly saves an eligible caption edit;
+   there is no automatic or bulk repair of previously queued posts.
+
+### Editing an existing scheduled caption (new and legacy queues)
+
+- On **IG 排程**, use **修改內文** for a pending or safely failed batch. The dialog shows the
+  original saved text, custom text and regenerated preview using the existing queue's Taiwan
+  time and reserved numbers. It never changes time, image files, order, generation or numbers.
+- Exact known Chinese/English-weekday templates are separated from custom notes, including
+  CRLF captions. Unknown or multiple-template formats are kept **in full**, with a warning
+  and a required review checkbox. The user can tidy these notes before saving; nothing is
+  discarded or rewritten merely by opening/closing the dialog. Cancel/reload prompt before
+  discarding typed changes. Combined text remains limited to 2,000 graphemes.
+- `GET /api/admin/instagram/batches/:id/caption` returns a sanitized edit model.
+  `POST` on the same path accepts only `{revision, customText}`. The server generates the
+  full text from its own schedule/numbers, not a client-supplied caption/date/number list.
+  Existing owner/admin/moderator session authentication, enabled checks and CSRF apply.
+- The deep module `instagram-captions.js` owns validation and the edit operation. Its one
+  insert into append-only `instagram_caption_edits` is the atomic write: a SQL guard rechecks
+  queue revision/state, publish intent, receipts, lease, matching snapshots and enabled admin.
+  Triggers update both queue and studio caption snapshots, clear parent/child container IDs
+  and readiness, invalidate old image-URL expiry, bump the studio revision, and append an
+  `ig_caption_updated` audit event. Audit metadata contains only batch ID/revision, not text
+  or credentials; the private edit history retains old/new text and editor for traceability.
+- The container objects are **not deleted from Meta**. Their IDs are discarded locally and
+  will never be used to publish; the next eligible Cron recreates containers using the new
+  text. No Meta calls or publishing happen inside the caption-save request. R2 files are
+  untouched. Existing attempts/backoff remain; failed jobs require a separate explicit Retry.
+- Active preparation also holds a lease, so edits are blocked during it. Publishing,
+  uncertain outcomes and saved media receipts are never editable, even if an expired browser
+  still shows the button. Revision conflict leaves typed text visible and asks for reload.
+  Previously locked image/number/cancel guards remain in place; only the recorded caption
+  transition is allowed. An audit/trigger failure rolls the entire insert and updates back.
+- `0014` preserves all existing data and does not initiate edits. Local tests exercise legacy
+  manual/automatic queues, real workerd D1 triggers, concurrency, rollback, roles/CSRF and
+  regeneration. The browser harness uses an isolated seeded admin for edit audits; production
+  auth is tested separately with real opaque test sessions. No live Meta acceptance has run.
+
 Local implementation only. No production migration, Cron, secrets, Access policy or publishing has been changed. D1 is the queue authority. This version uses Instagram API with Instagram Login and one professional account. **One 本次發送 batch = one Instagram post**, containing its ordered 1–10 images and one shared caption. A one-image batch uses a normal image container; multiple images use a carousel parent.
 
 ## Workflow

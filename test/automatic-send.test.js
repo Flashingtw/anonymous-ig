@@ -10,7 +10,7 @@ import {InstagramError} from '../worker/src/services/instagram.js';
 const principal={adminId:1,role:'moderator'},time='2030-01-01T00:00:00.000Z';
 function fixture(){
  const f=createTestDatabase({images:true,singleSend:true,studioDelete:true});
- for(const migration of ['0010_instagram_publish_queue','0011_multiple_send_batches','0012_automatic_locked_batches'])f.raw.exec(readFileSync(new URL(`../migrations/${migration}.sql`,import.meta.url),'utf8'));
+ for(const migration of ['0010_instagram_publish_queue','0011_multiple_send_batches','0012_automatic_locked_batches','0013_instagram_preparation','0014_instagram_caption_edits'])f.raw.exec(readFileSync(new URL(`../migrations/${migration}.sql`,import.meta.url),'utf8'));
  f.raw.exec("INSERT INTO admins(id,access_email,role) VALUES(1,'mod@example.test','moderator')");
  const versions=[];
  for(let id=1;id<=4;id++){const version=crypto.randomUUID();versions.push(version);f.raw.prepare("INSERT INTO submissions(id,content,status) VALUES(?,'original','approved')").run(id);f.raw.prepare("INSERT INTO image_drafts(id,text,layout,state) VALUES(?,'copy',?,'ready')").run(id,JSON.stringify(defaultLayout()));f.raw.prepare("INSERT INTO image_versions(id,draft_id,draft_revision,object_key,text,layout) VALUES(?,?,1,?,'copy',?)").run(version,id,'source'+id,JSON.stringify(defaultLayout()));}
@@ -35,10 +35,31 @@ test('multiple irreversible locks reserve contiguous numbers and freeze automati
  await assert.rejects(()=>editInstagram(f.DB,a,'cancel-publish',row.revision,principal));
  assert.deepEqual(f.raw.prepare('PRAGMA foreign_key_check').all(),[]);
 });
+
+test('automatic lock generates caption date from scheduled Taiwan day, retaining custom text above lock',async t=>{
+ const f=fixture();t.after(()=>f.close());
+ const old=defaultCaption([999],new Date('2026-10-05T00:00:00Z'));
+ const state=await f.command('save',{batchId:null,caption:'本週公告\n第二行\n\n'+old,items:[f.versions[0]]});
+ const batch=(await f.command('prepare',{batchId:state.batch.id,publishAt:'2026-10-05T16:30:00Z'})).batch;
+ assert.equal(batch.caption,'本週公告\n第二行\n\n'+defaultCaption([109],new Date('2026-10-05T16:30:00Z')));
+ assert.equal(f.raw.prepare('SELECT published_caption FROM instagram_queue').get().published_caption,batch.caption);
+});
+
+test('template length is checked before reserving numbers; locked captions remain immutable',async t=>{
+ const f=fixture();t.after(()=>f.close());const state=await f.command('save',{batchId:null,caption:'文'.repeat(1999),items:[f.versions[0]]});
+ await assert.rejects(()=>f.command('prepare',{batchId:state.batch.id,publishAt:time}),e=>e.status===400);
+ assert.equal((await currentSend(f.DB)).next_number,109);assert.equal(f.raw.prepare('SELECT count(*) n FROM instagram_queue').get().n,0);
+ await f.command('save',{batchId:state.batch.id,caption:'舊的自訂文字',items:[f.versions[0]]});await f.lock(state.batch.id);
+ const snapshot=f.raw.prepare('SELECT published_caption FROM instagram_queue').get().published_caption;
+ assert.match(snapshot,/^舊的自訂文字\n\n🔒/);
+ await assert.rejects(()=>f.command('prepare',{batchId:state.batch.id,publishAt:'2040-01-01T00:00:00Z'}));
+ assert.equal(f.raw.prepare('SELECT published_caption FROM instagram_queue').get().published_caption,snapshot);
+});
 test('incomplete head blocks later queued batches; success advances one whole batch per run',async t=>{
  const f=fixture();t.after(()=>f.close());const a=await f.save(f.versions.slice(0,2)),b=await f.save(f.versions.slice(2));await f.lock(a);await f.lock(b);await f.upload(b);
  const run=()=>processInstagramQueue(f.env,{now:new Date(time),service:f.service});
- assert.equal((await run()).status,'idle');assert.equal(f.published(),0);
+ assert.equal((await run()).status,'prepared');assert.equal(f.published(),0);
+ assert.equal((await run()).status,'idle');assert.equal((await currentSend(f.DB)).last_number,108);
  await f.upload(a);assert.equal((await run()).status,'published');assert.equal((await currentSend(f.DB)).last_number,110);
  assert.equal((await run()).status,'published');assert.equal((await currentSend(f.DB)).last_number,112);assert.equal(f.published(),2);
  assert.equal(f.raw.prepare('SELECT count(*) n FROM send_records').get().n,4);assert.deepEqual(f.raw.prepare('PRAGMA foreign_key_check').all(),[]);
@@ -46,6 +67,7 @@ test('incomplete head blocks later queued batches; success advances one whole ba
 test('head backoff cannot be starved by an earlier-due later batch; no skipping failed head',async t=>{
  const f=fixture();t.after(()=>f.close());const a=await f.save([f.versions[0]]),b=await f.save([f.versions[1]]);await f.lock(a);await f.lock(b);await f.upload(a);await f.upload(b);
  await processInstagramQueue(f.env,{now:new Date(time),service:{...f.service,create:async()=>{throw new InstagramError('temporary');}}});
+ assert.equal((await processInstagramQueue(f.env,{now:new Date(time),service:f.service})).status,'prepared');assert.equal(f.published(),0);
  assert.equal((await processInstagramQueue(f.env,{now:new Date(time),service:f.service})).status,'idle');
  assert.equal((await processInstagramQueue(f.env,{now:new Date(Date.parse(time)+5*60000),service:f.service})).status,'published');
  assert.equal((await currentSend(f.DB)).last_number,109);assert.equal(f.published(),1);

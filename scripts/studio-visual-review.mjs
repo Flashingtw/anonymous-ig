@@ -8,6 +8,8 @@ import {pathToFileURL} from 'node:url';
 import {createTestDatabase} from '../test/helpers/d1.js';
 import {handleApiRequest} from '../worker/src/index.js';
 import {increaseLastNumber} from '../worker/src/repositories/current-send.js';
+import {instagramHandler} from '../worker/src/handlers/instagram.js';
+import {errorResponse} from '../worker/src/http.js';
 const serve=process.argv.includes('--serve');
 const root=resolve(import.meta.dirname,'..'),frontend=resolve(root,'frontend'),output=resolve(root,'tmp/studio-visual-review');
 await mkdir(output,{recursive:true});
@@ -15,6 +17,8 @@ const db=createTestDatabase({images:true,singleSend:true,studioDelete:true}),obj
 db.raw.exec(readFileSync(resolve(root,'migrations/0010_instagram_publish_queue.sql'),'utf8'));
 db.raw.exec(readFileSync(resolve(root,'migrations/0011_multiple_send_batches.sql'),'utf8'));
 db.raw.exec(readFileSync(resolve(root,'migrations/0012_automatic_locked_batches.sql'),'utf8'));
+db.raw.exec(readFileSync(resolve(root,'migrations/0013_instagram_preparation.sql'),'utf8'));
+db.raw.exec(readFileSync(resolve(root,'migrations/0014_instagram_caption_edits.sql'),'utf8'));
 db.raw.exec("INSERT INTO admins(id,github_user_id,github_username,role,access_email) VALUES(1,'123','test-owner','owner','owner@example.test'); INSERT INTO submissions(id,content,status) VALUES(1,'今天也要記得，留一點時間給自己。','approved'),(2,'不知道該怎麼說，但還是想謝謝一直陪著我的你。','approved');");
 const env={DB:db.DB,APP_ENV:'development',STUDIO_DELETE_ENABLED:'true',SINGLE_SEND_ENABLED:'true',IMAGE_STUDIO_ENABLED:'true',ADMIN_AUTH_PROVIDER:'dev',DEV_ADMIN_MODE:'true',DEV_ADMIN_TOKEN:localToken,STUDIO_IMAGES:{async put(k,v){objects.set(k,v);},async get(k){return objects.has(k)?{body:objects.get(k)}:null;},async delete(k){objects.delete(k);}}};
 const server=createServer(async(req,res)=>{
@@ -22,7 +26,13 @@ const server=createServer(async(req,res)=>{
   const url=new URL(req.url,'http://127.0.0.1');
   if(url.pathname.startsWith('/api/')){
    const chunks=[];for await(const chunk of req)chunks.push(chunk);
-   const r=await handleApiRequest(new Request(`http://127.0.0.1:${server.address().port}${req.url}`,{method:req.method,headers:req.headers,...(!['GET','HEAD'].includes(req.method)?{body:Buffer.concat(chunks)}:{})}),env);
+   const request=new Request(`http://127.0.0.1:${server.address().port}${req.url}`,{method:req.method,headers:req.headers,...(!['GET','HEAD'].includes(req.method)?{body:Buffer.concat(chunks)}:{})});
+   // Local-only identity fixture for audited caption edits. Real sessions/CSRF,
+   // owner/admin/moderator and disabled checks are covered by HTTP integration tests.
+   const captionFixture=/^\/api\/admin\/instagram\/batches\/[a-zA-Z0-9-]+\/caption$/.test(url.pathname)&&request.headers.get('Authorization')===`Bearer ${localToken}`;
+   let r;
+   try{r=captionFixture?await instagramHandler(request,env,{adminId:1,role:'owner',provider:'dev'},url.pathname):await handleApiRequest(request,env);}
+   catch(error){r=errorResponse(error);}
    res.writeHead(r.status,Object.fromEntries(r.headers));res.end(Buffer.from(await r.arrayBuffer()));return;
   }
   if(url.pathname==='/config.js'){res.setHeader('Content-Type','text/javascript');res.end('window.APP_CONFIG={API_BASE_URL:"",ADMIN_AUTH_MODE:"dev"};'+(serve?`sessionStorage.setItem('anonymous-submissions.dev-admin-token',${JSON.stringify(localToken)});`:''));return;}
@@ -40,7 +50,7 @@ if(serve){
 }
 const {chromium}=await import(pathToFileURL(process.env.PLAYWRIGHT_MODULE).href);
 const browser=await chromium.launch({channel:process.env.VISUAL_BROWSER_CHANNEL??'msedge',headless:true});
-const context=await browser.newContext({viewport:{width:1440,height:1050},acceptDownloads:true});
+const context=await browser.newContext({viewport:{width:1440,height:1050},acceptDownloads:true,timezoneId:'Asia/Taipei'});
 await context.addInitScript(token=>sessionStorage.setItem('anonymous-submissions.dev-admin-token',token),localToken);
 const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
 await page.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
@@ -95,14 +105,17 @@ try{
  await page.getByRole('button',{name:'往後',exact:true}).first().click();await idle();
  await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.copiedCaption=text;}}}));
  await page.locator('#copy-caption').click();assert.equal(await page.evaluate(()=>window.copiedCaption),await page.locator('#caption').inputValue());
- await page.locator('#caption').fill('');assert.equal(await page.locator('#copy-caption').isDisabled(),true);
- await page.locator('#caption').fill('今晚，留一句話給自己。');await page.locator('#copy-caption').click();assert.equal(await page.evaluate(()=>window.copiedCaption),'今晚，留一句話給自己。');
+ assert.equal(await page.locator('#caption').evaluate(el=>el.readOnly),true);
+ await page.locator('#custom-caption').fill('');assert.match(await page.locator('#caption').inputValue(),/^🔒/);
+ await page.locator('#custom-caption').fill('今晚，留一句話給自己。');
+ const composedCaption=await page.locator('#caption').inputValue();assert.match(composedCaption,/^今晚，留一句話給自己。\n\n🔒/);
+ await page.locator('#copy-caption').click();assert.equal(await page.evaluate(()=>window.copiedCaption),composedCaption);
  await page.getByRole('button',{name:'保存本次發送',exact:true}).click();await idle();
  assert.equal(await page.locator('#dispatch-editor').isVisible(),false);
  assert.equal(await page.locator('[data-tab="ready"]').getAttribute('aria-pressed'),'true');
  await page.getByRole('button',{name:'本次發送',exact:true}).click();await idle();
  await page.getByRole('button',{name:'開啟本次發送'}).click();await idle();
- assert.equal(await page.locator('#caption').inputValue(),'今晚，留一句話給自己。');
+ assert.equal(await page.locator('#caption').inputValue(),composedCaption);assert.equal(await page.locator('#custom-caption').inputValue(),'今晚，留一句話給自己。');
  checks.push('explicit dispatch save returns to ready gallery and saved draft reopens');
  await page.screenshot({path:resolve(output,'dispatch-desktop.png'),fullPage:true});
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:resolve(output,'dispatch-mobile.png'),fullPage:true});
@@ -128,11 +141,11 @@ try{
  await page.unroute('**/api/admin/studio/send/image',failUpload);
  await page.locator('#generate-images').click();await idle();assert.equal(downloads,0);
  assert.equal(await page.locator('#dispatch-items img').count(),2);assert.equal(await page.locator('#generate-images').isVisible(),false);
- await page.locator('#copy-caption').click();assert.equal(await page.evaluate(()=>window.copiedCaption),'今晚，留一句話給自己。');
+ await page.locator('#copy-caption').click();assert.equal(await page.evaluate(()=>window.copiedCaption),composedCaption);
  await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async()=>{throw new DOMException('denied','NotAllowedError');}}}));
  await page.locator('#copy-caption').click();assert.match(await page.locator('#studio-status').innerText(),/已選取內文/);
  assert.equal(await page.locator('#caption').evaluate(el=>el.selectionEnd-el.selectionStart),await page.locator('#caption').evaluate(el=>el.value.length));
- checks.push('caption copy preserves multiline generated and edited text; empty disabled; locked caption copy and denied clipboard selection fallback');
+ checks.push('separate custom caption above read-only template; save/reopen/copy preserve full caption; locked copy and denied clipboard fallback');
  await page.locator('#save-phone').click();await idle();assert.deepEqual(await page.evaluate(()=>window.shareCalls.at(-1)),['daan-109.png','daan-110.png']);
  assert.equal(await page.locator('#studio-status').innerText(),'');
  await page.evaluate(()=>window.shareMode='cancel');await page.locator('#save-phone').click();await idle();assert.equal(await page.locator('#studio-status').innerText(),'');
@@ -162,7 +175,7 @@ try{
  const archive=await readFile(resolve(output,'dispatch.zip'));let offset=0;const entries=[];
  while(archive.readUInt32LE(offset)===0x04034b50){const size=archive.readUInt32LE(offset+18),n=archive.readUInt16LE(offset+26),extra=archive.readUInt16LE(offset+28),start=offset+30+n+extra;entries.push({name:archive.subarray(offset+30,offset+30+n).toString(),data:archive.subarray(start,start+size)});offset=start+size;}
  assert.deepEqual(entries.map(e=>e.name),['01-daan-109.png','02-daan-110.png','caption.txt']);
- assert.equal(entries[2].data.toString(),'今晚，留一句話給自己。');assert.equal(entries[0].data.readUInt32BE(16),1080);assert.equal(entries[0].data.readUInt32BE(20),1350);
+ assert.equal(entries[2].data.toString(),composedCaption);assert.equal(entries[0].data.readUInt32BE(16),1080);assert.equal(entries[0].data.readUInt32BE(20),1350);
  const locked=db.raw.prepare('SELECT submission_id,text,layout,number FROM send_items ORDER BY position').all().map(i=>({...i,layout:JSON.parse(i.layout)}));
  const hashes=await page.evaluate(async items=>{const {loadStudioAssets,exportPng}=await import('/admin/studio/canvas.js');const assets=await loadStudioAssets();const output=[];for(const i of items){i.layout.number.label=String(i.number);const png=await exportPng(assets,{id:i.submission_id,text:i.text,layout:i.layout});output.push([...new Uint8Array(await crypto.subtle.digest('SHA-256',await png.arrayBuffer()))].map(x=>x.toString(16).padStart(2,'0')).join(''));}return output;},locked);
  assert.deepEqual(entries.slice(0,2).map(e=>createHash('sha256').update(e.data).digest('hex')),hashes);
@@ -176,7 +189,7 @@ try{
  assert.equal(db.raw.prepare('SELECT publish_status FROM instagram_queue').get().publish_status,'pending');
  assert.deepEqual(db.raw.prepare('SELECT submission_id FROM instagram_items ORDER BY position').all().map(i=>i.submission_id),locked.map(i=>i.submission_id));
  const jpegRows=db.raw.prepare('SELECT published_image_key,published_caption FROM instagram_items JOIN instagram_queue USING(batch_id) ORDER BY position').all();
- for(const row of jpegRows){assert.equal(row.published_caption,'今晚，留一句話給自己。');const bytes=objects.get(row.published_image_key);assert.equal(bytes[0],255);assert.equal(bytes[1],216);}
+ for(const row of jpegRows){assert.equal(row.published_caption,composedCaption);const bytes=objects.get(row.published_image_key);assert.equal(bytes[0],255);assert.equal(bytes[1],216);}
  await page.screenshot({path:resolve(output,'instagram-desktop.png'),fullPage:true});
  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:resolve(output,'instagram-mobile.png'),fullPage:true});
  await page.getByRole('button',{name:'取消整包排程',exact:true}).click();await idle();
@@ -189,7 +202,7 @@ try{
  assert.equal(db.raw.prepare('SELECT last_number FROM send_progress').get().last_number,108);
  await page.screenshot({path:resolve(output,'prepared-desktop.png'),fullPage:true});
  await page.locator('#close-dispatch').click();await page.getByRole('button',{name:'本次發送',exact:true}).click();await idle();
- await page.getByRole('button',{name:'開啟本次發送'}).click();await idle();assert.equal(await page.locator('#caption').inputValue(),'今晚，留一句話給自己。');
+ await page.getByRole('button',{name:'開啟本次發送'}).click();await idle();assert.equal(await page.locator('#caption').inputValue(),composedCaption);
  page.once('dialog',dialog=>dialog.accept());await page.locator('#confirm-send').click();await idle();
  assert.equal(db.raw.prepare('SELECT last_number FROM send_progress').get().last_number,109);
  assert.equal(db.raw.prepare('SELECT count(*) n FROM send_records').get().n,1);
@@ -281,11 +294,15 @@ try{
  await page.getByRole('button',{name:'開啟本次發送',exact:true}).click();await idle();
  await page.locator('#publish-date').fill('2030-01-01');await page.locator('#publish-hour').selectOption('23');await page.locator('#publish-minute').selectOption('45');
  await page.getByRole('button',{name:'＋30 分鐘',exact:true}).click();assert.equal(await page.locator('#publish-time').inputValue(),'2030-01-02T00:15');
+ await page.locator('#custom-caption').fill('跨日公告\n第二行');
+ assert.match(await page.locator('#caption').inputValue(),/^跨日公告\n第二行\n\n🔒\n日期📆\n2030\/01\/02 - Wednesday/);
  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  await page.screenshot({path:resolve(output,'schedule-time-mobile.png'),fullPage:true});
  await page.setViewportSize({width:1280,height:900});await page.screenshot({path:resolve(output,'schedule-time-desktop.png'),fullPage:true});
  page.once('dialog',d=>d.accept());await page.locator('#generate-images').click();await idle();
  assert.equal(await page.locator('#publish-date').isDisabled(),true);
+ assert.equal(await page.locator('#custom-caption').evaluate(el=>el.readOnly),true);
+ assert.match(db.raw.prepare("SELECT published_caption FROM instagram_queue WHERE first_number=121").get().published_caption,/^跨日公告\n第二行\n\n🔒\n日期📆\n2030\/01\/02 - Wednesday/);
  assert.equal(await page.locator('#cancel-send').isVisible(),false);assert.equal(await page.locator('#reset-send').isVisible(),false);assert.equal(await page.locator('#confirm-controls').isVisible(),false);
  assert.equal(db.raw.prepare("SELECT count(*) n FROM instagram_queue q JOIN send_batches b ON b.id=q.batch_id WHERE b.auto_publish=1 AND q.publish_status='pending'").get().n,1);
  await page.locator('#close-dispatch').click();await idle();
@@ -311,6 +328,53 @@ try{
  await page.screenshot({path:resolve(output,'automatic-locked-mobile.png'),fullPage:true});
  await page.setViewportSize({width:1280,height:900});await page.screenshot({path:resolve(output,'automatic-locked-desktop.png'),fullPage:true});
  checks.push('one action locks, renders and automatically queues; two batches reserve distinct contiguous numbers; cancellation hidden; failed JPEG upload resumes without new numbers or manual scheduling');
+ // Only local DB fixtures: no Meta calls, real scheduling or production mutations.
+ db.raw.exec("UPDATE instagram_queue SET preparation_status=CASE WHEN first_number=121 THEN 'ready' ELSE 'processing' END");
+ await page.goto(origin+'/admin/instagram/');await idle();
+ assert.match(await page.locator('#instagram-list').innerText(),/已準備，等待發布/);
+ assert.match(await page.locator('#instagram-list').innerText(),/Meta 圖片處理中/);
+ await page.setViewportSize({width:1280,height:900});await page.screenshot({path:resolve(output,'preparation-desktop.png'),fullPage:true});
+ await page.setViewportSize({width:390,height:844});
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ await page.screenshot({path:resolve(output,'preparation-mobile.png'),fullPage:true});
+ await page.locator('#instagram-refresh').focus();await page.keyboard.press('Enter');await idle();
+ checks.push('preparation status page: ready vs processing labels, desktop/mobile, keyboard refresh, no overflow; Meta never called');
+ const editCard=page.locator('#instagram-list article').filter({hasText:'#121–#121'});
+ const beforeEdit=db.raw.prepare('SELECT * FROM instagram_queue WHERE first_number=121').get();
+ await editCard.getByRole('button',{name:'修改內文',exact:true}).click();
+ await page.waitForFunction(()=>!document.querySelector('#ig-caption-custom').disabled);
+ assert.equal(await page.locator('#ig-caption-custom').inputValue(),'跨日公告\n第二行');
+ assert.equal(db.raw.prepare('SELECT revision FROM instagram_queue WHERE first_number=121').get().revision,beforeEdit.revision,'opening is read-only');
+ await page.locator('#ig-caption-custom').fill('既有排程更新公告\n第二行');
+ assert.match(await page.locator('#ig-caption-preview').inputValue(),/^既有排程更新公告\n第二行\n\n🔒\n日期📆\n2030\/01\/02 - Wednesday/);
+ await page.setViewportSize({width:1280,height:900});await page.screenshot({path:resolve(output,'caption-edit-desktop.png'),fullPage:true});
+ await page.setViewportSize({width:390,height:844});
+ assert.equal(await page.locator('#ig-caption-editor').evaluate(el=>el.scrollWidth>el.clientWidth),false);
+ await page.screenshot({path:resolve(output,'caption-edit-mobile.png'),fullPage:true});
+ // Stale snapshot keeps typed text; explicit reload asks before discarding.
+ db.raw.exec('UPDATE instagram_queue SET revision=revision+1 WHERE first_number=121');
+ await page.locator('#ig-caption-save').click();await page.waitForFunction(()=>document.querySelector('#ig-caption-error').textContent.includes('未保存'));
+ assert.equal(await page.locator('#ig-caption-custom').inputValue(),'既有排程更新公告\n第二行');
+ page.once('dialog',d=>d.dismiss());await page.locator('#ig-caption-reload').click();assert.equal(await page.locator('#ig-caption-custom').inputValue(),'既有排程更新公告\n第二行');
+ page.once('dialog',d=>d.accept());await page.locator('#ig-caption-reload').click();await page.waitForFunction(()=>!document.querySelector('#ig-caption-custom').disabled);
+ await page.locator('#ig-caption-custom').fill('既有排程更新公告\n第二行');
+ await page.locator('#ig-caption-save').focus();await page.keyboard.press('Enter');await page.waitForFunction(()=>!document.querySelector('#ig-caption-editor').open);
+ const afterEdit=db.raw.prepare('SELECT * FROM instagram_queue WHERE first_number=121').get();
+ assert.match(afterEdit.published_caption,/^既有排程更新公告/);assert.equal(afterEdit.publish_at,beforeEdit.publish_at);assert.equal(afterEdit.preparation_status,'none');
+ assert.equal(db.raw.prepare('SELECT caption FROM send_batches WHERE id=?').get(beforeEdit.batch_id).caption,afterEdit.published_caption);
+ await page.waitForFunction(()=>document.querySelector('#schedule-status').textContent.includes('內文已保存'));
+ await editCard.getByRole('button',{name:'修改內文',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('#ig-caption-custom').disabled);
+ assert.equal(await page.locator('#ig-caption-custom').inputValue(),'既有排程更新公告\n第二行');
+ await page.locator('#ig-caption-custom').fill('cancel me');page.once('dialog',d=>d.accept());await page.keyboard.press('Escape');
+ assert.equal(db.raw.prepare('SELECT published_caption FROM instagram_queue WHERE first_number=121').get().published_caption,afterEdit.published_caption);
+ // Unknown-format GET fixture: show the complete original and require explicit review.
+ await page.route('**/instagram/batches/*/caption',async route=>{if(route.request().method()!=='GET')return route.continue();const response=await route.fetch(),body=await response.json();body.data={...body.data,caption:'舊格式全文 #888',customText:'舊格式全文 #888',recognized:false};await route.fulfill({json:body});});
+ await editCard.getByRole('button',{name:'修改內文',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('#ig-caption-custom').disabled);
+ assert.equal(await page.locator('#ig-caption-custom').inputValue(),'舊格式全文 #888');assert.equal(await page.locator('#ig-caption-legacy').isVisible(),true);assert.equal(await page.locator('#ig-caption-save').isDisabled(),true);
+ await page.locator('#ig-caption-ack').check();assert.equal(await page.locator('#ig-caption-save').isDisabled(),false);
+ await page.locator('#ig-caption-custom').fill('字'.repeat(2000));assert.equal(await page.locator('#ig-caption-save').isDisabled(),true);
+ page.once('dialog',d=>d.accept());await page.locator('#ig-caption-cancel').click();await page.unroute('**/instagram/batches/*/caption');
+ checks.push('caption edit: open read-only, scheduled template, desktop/mobile modal, keyboard save, stale revision retains text, explicit reload/cancel, unknown legacy acknowledgement, length guard, reopen persisted caption');
  for(let id=1000;id<1235;id++)db.raw.prepare('INSERT INTO submissions(id,content) VALUES(?,?)').run(id,'pagination '+id);
  await page.goto(origin+'/admin/');await page.waitForFunction(()=>document.querySelectorAll('#submissions-list article').length===100);
  await page.locator('#load-more-submissions').click();await page.waitForFunction(()=>document.querySelectorAll('#submissions-list article').length===200);
@@ -319,5 +383,5 @@ try{
  assert.match(await page.locator('#pending-count').innerText(),/235/);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  assert.deepEqual(errors,[]);checks.push('admin loads 235 submissions across three pages with accurate total and no mobile overflow');
- await writeFile(resolve(output,'report.json'),JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:14},null,2));console.log(JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:14}));
+ await writeFile(resolve(output,'report.json'),JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:18},null,2));console.log(JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:18}));
 }finally{await browser.close();await new Promise(r=>server.close(r));db.close();}
