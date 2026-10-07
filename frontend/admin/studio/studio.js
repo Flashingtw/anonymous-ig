@@ -101,6 +101,7 @@ function renderGallery(){
     if(tab==='dispatch'){
       card.append(paragraph(row.caption||'未填寫貼文說明'),paragraph(row.updated_at),button('檢視歷史草稿',()=>openDispatch(row.id)));
     }else{
+      card.dataset.submissionId=row.id;
       card.append(paragraph(`投稿 #${row.id}`));
       if(row.version_id&&tab==='ready'){
         const img=document.createElement('img');img.alt=`投稿 #${row.id} 圖片`;card.append(img);void thumbnail(img,row.version_id);
@@ -117,8 +118,10 @@ function renderGallery(){
     gallery.append(card);
   }
   if(tab==='draft')for(const row of listing.approved){
-    const card=document.createElement('article');card.className='studio-card';card.append(paragraph(`已核准投稿 #${row.id}`),paragraph(row.content),button('建立圖片草稿',async()=>{await request('/drafts/'+row.id,{method:'POST'});await reload();await openImage(row.id);}));if(listing.deletionEnabled)card.append(removalButton(row,'approved'));gallery.append(card);
+    const card=document.createElement('article');card.className='studio-card';card.dataset.submissionId=row.id;card.append(paragraph(`已核准投稿 #${row.id}`),paragraph(row.content),button('建立圖片草稿',async()=>{await request('/drafts/'+row.id,{method:'POST'});await reload();await openImage(row.id);}));if(listing.deletionEnabled)card.append(removalButton(row,'approved'));gallery.append(card);
   }
+  // Sort the combined draft/approved gallery, without changing batch selection order.
+  if(tab==='draft'||tab==='ready')gallery.replaceChildren(...[...gallery.children].sort((a,b)=>Number(a.dataset.submissionId)-Number(b.dataset.submissionId)));
   if(!gallery.children.length)gallery.append(paragraph('此區目前沒有項目。'));
   sync();
 }

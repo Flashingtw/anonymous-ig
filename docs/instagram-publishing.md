@@ -183,6 +183,12 @@ No production deployment, live IG post, secret setup or migration was performed 
 
 ## Verification results
 
+### Tooling security patch (2026-10-07)
+
+- GHSA-wq5f-xc86-pv6w made the existing Sharp 0.35.4 development dependency fail full audit. Wrangler 4.148.0 / Miniflare 5.20261006.0-alpha still pin that version, so upgrading those tools alone does not resolve the advisory.
+- A narrowly scoped `overrides.miniflare.sharp` pins the patched **0.35.5**, including its matching platform/libvips packages. Wrangler, Miniflare, workerd, esbuild and runtime `jose` remain unchanged. Remove the override once the chosen upstream Miniflare version includes a patched Sharp itself.
+- Full `npm audit --audit-level=low` reports **0 vulnerabilities** after this patch. No audit exclusions, threshold changes, forced downgrade or production configuration changes are part of the dependency fix.
+
 ### Tooling security checkpoint (2026-10-04)
 
 - Updated only development tooling: Wrangler 4.147.0 and its matching Miniflare 5.20261001.0-alpha, with their lockfile dependencies. Runtime dependency `jose` is unchanged.

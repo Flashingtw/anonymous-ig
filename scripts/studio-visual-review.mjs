@@ -58,6 +58,28 @@ const idle=()=>page.waitForFunction(()=>{const button=document.querySelector('#r
 const checks=[];
 try{
  await page.goto(origin+'/admin/studio/');await idle();
+ // Deliberately unordered API fixtures verify numeric, cross-group gallery order.
+ const listingUrl=origin+'/api/admin/studio';
+ await page.route(listingUrl,async route=>{
+  const response=await route.fetch(),body=await response.json();
+  body.data.drafts=[{id:10,state:'draft'},{id:2,state:'draft'},{id:12,state:'ready'},{id:3,state:'ready'},{id:1,state:'ready',reserved:true}].map(row=>({...row,text:'排序測試',editor:'fixture',updated_at:'2026-10-01',revision:1,version_id:`00000000-0000-4000-8000-${String(row.id).padStart(12,'0')}`}));
+  body.data.approved=[{id:5,content:'等待建立草稿'},{id:1,content:'等待建立草稿'}];
+  await route.fulfill({json:body});
+ });
+ await page.route('**/api/admin/studio/images/*',route=>route.fulfill({status:200,contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64')}));
+ await page.locator('#reload').click();await idle();
+ const galleryIds=async()=> (await page.locator('#gallery article > p:first-child').allTextContents()).map(s=>Number(s.match(/#(\d+)/)[1]));
+ assert.deepEqual(await galleryIds(),[1,2,5,10]);
+ await page.locator('[data-tab="ready"]').click();await idle();
+ assert.deepEqual(await galleryIds(),[3,12]);
+ await page.locator('#gallery input[type="checkbox"]').nth(1).check();
+ await page.locator('#gallery input[type="checkbox"]').nth(0).check();
+ await page.locator('#compose').click();await idle();
+ assert.deepEqual((await page.locator('#dispatch-items li > p').allTextContents()).map(s=>Number(s.match(/投稿 #(\d+)/)[1])),[12,3]);
+ page.once('dialog',d=>d.accept());
+ await page.unroute(listingUrl);await page.unroute('**/api/admin/studio/images/*');
+ await page.reload();await idle();
+ checks.push('draft/approved gallery globally sorts submission IDs numerically; ready excludes reserved and sorts IDs; batch preserves selection order');
  await page.route('**/CanvaBeautifulTC-Regular.woff2',route=>route.abort());
  await page.getByRole('button',{name:'建立圖片草稿'}).first().click();await idle();
  assert.equal(await page.locator('#ready-image').isDisabled(),true);assert.equal(await page.locator('#retry-assets').isVisible(),true);
