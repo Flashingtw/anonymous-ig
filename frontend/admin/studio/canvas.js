@@ -16,19 +16,23 @@ export function wrapText(text,measure,maxWidth=650){
 }
 function textBox(ctx,text,box,family,wrap){
   ctx.font=`${box.size}px ${family}`;
-  ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.textAlign='left';ctx.textBaseline='middle';
   const lines=wrap?wrapText(text,t=>ctx.measureText(t).width):[text];
   const lineHeight=box.size*1.3;
-  const width=Math.max(1,...lines.map(t=>ctx.measureText(t).width));
+  const metrics=lines.map(t=>ctx.measureText(t));
+  // Explicit origins avoid WebKit's native center-alignment bug for emoji runs.
+  // Use these same origins for bounds, preview and PNG output.
+  const lineXs=metrics.map(m=>box.x-m.width/2);
+  const width=Math.max(1,...metrics.map(m=>m.width));
   const height=lines.length*lineHeight;
   const drawY=box.y-height/2;
   let left=box.x-width/2,right=box.x+width/2,top=drawY,bottom=drawY+height;
   lines.forEach((line,index)=>{
-    const m=ctx.measureText(line),baseline=drawY+lineHeight*(index+.5);
-    left=Math.min(left,box.x-(m.actualBoundingBoxLeft??0));right=Math.max(right,box.x+(m.actualBoundingBoxRight??0));
+    const m=metrics[index],baseline=drawY+lineHeight*(index+.5);
+    left=Math.min(left,lineXs[index]-(m.actualBoundingBoxLeft??0));right=Math.max(right,lineXs[index]+(m.actualBoundingBoxRight??0));
     top=Math.min(top,baseline-(m.actualBoundingBoxAscent??0));bottom=Math.max(bottom,baseline+(m.actualBoundingBoxDescent??0));
   });
-  return {x:left,y:top,width:right-left,height:bottom-top,drawY,lines,lineHeight,family,size:box.size,cx:box.x,cy:box.y};
+  return {x:left,y:top,width:right-left,height:bottom-top,drawY,lines,lineXs,lineHeight,family,size:box.size,cx:box.x,cy:box.y};
 }
 const inside=r=>r.x>=SAFE.x&&r.y>=SAFE.y&&r.x+r.width<=SAFE.x+SAFE.width&&r.y+r.height<=SAFE.y+SAFE.height;
 const overlaps=(a,b)=>a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
@@ -53,8 +57,8 @@ export function paint(ctx,assets,doc,{selected=null}={}){
   ctx.clearRect(0,0,WIDTH,HEIGHT);ctx.drawImage(assets.background,0,0,WIDTH,HEIGHT);
   const result=measureDocument(ctx,doc);
   for(const key of ['body','number']){
-    const box=result[key];ctx.fillStyle='#111';ctx.font=`${box.size}px ${box.family}`;ctx.textAlign='center';ctx.textBaseline='middle';
-    box.lines.forEach((line,index)=>ctx.fillText(line,box.cx,box.drawY+box.lineHeight*(index+.5)));
+    const box=result[key];ctx.fillStyle='#111';ctx.font=`${box.size}px ${box.family}`;ctx.textAlign='left';ctx.textBaseline='middle';
+    box.lines.forEach((line,index)=>ctx.fillText(line,box.lineXs[index],box.drawY+box.lineHeight*(index+.5)));
     if(selected===key){ctx.strokeStyle='#c95421';ctx.lineWidth=3;ctx.setLineDash([8,5]);ctx.strokeRect(box.x-6,box.y-6,box.width+12,box.height+12);ctx.setLineDash([]);}
   }
   return result;

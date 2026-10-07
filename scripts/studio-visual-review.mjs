@@ -82,6 +82,43 @@ try{
  await page.locator('#center-text').click();assert.equal(await page.locator('#pos-x').inputValue(),'540');assert.equal(await page.locator('#pos-y').inputValue(),numberY);assert.equal(numberY,'385');assert.equal(await page.locator('#font-size').inputValue(),'40');
  await page.locator('#selected-box').selectOption('body');
  checks.push('horizontal centering works for both text boxes and keyboard; preserves Y and font size');
+ const emojiChecks=await page.evaluate(async()=>{
+  const {paint,exportPng,loadStudioAssets}=await import('/admin/studio/canvas.js');
+  const {defaultLayout}=await import('/admin/studio/model.js');
+  const assets=await loadStudioAssets(),results=[];
+  for(const text of ["汽二乙 let's goooo 🗣️🗣️🗣️",'中文❤️\n👨‍👩‍👧‍👦👍🏽\ne\u0301','正常文字\n下一行']){
+   const doc={id:1,text,layout:defaultLayout()};
+   const canvas=document.createElement('canvas');canvas.width=1080;canvas.height=1350;
+   const ctx=canvas.getContext('2d');
+   const measured=paint(ctx,assets,doc);
+   const preview=ctx.getImageData(0,0,1080,1350).data;
+   const blob=await exportPng(assets,doc),bitmap=await createImageBitmap(blob);
+   ctx.clearRect(0,0,1080,1350);ctx.drawImage(bitmap,0,0);
+   const exported=ctx.getImageData(0,0,1080,1350).data;
+   const samePixels=preview.every((v,i)=>v===exported[i]);
+   const dimensions=[bitmap.width,bitmap.height];bitmap.close();
+   const transparent=document.createElement('canvas');transparent.width=1080;transparent.height=1350;
+   paint(ctx,{background:transparent},doc);
+   const offsets=measured.body.lines.map((line,i)=>{
+    const y=Math.floor(measured.body.drawY+i*measured.body.lineHeight);
+    const pixels=ctx.getImageData(0,y,1080,Math.ceil(measured.body.lineHeight)).data;
+    let left=1080,right=-1;
+    for(let p=3;p<pixels.length;p+=4)if(pixels[p]>32){const x=((p-3)/4)%1080;left=Math.min(left,x);right=Math.max(right,x);}
+    return right<0?0:(left+right)/2-540;
+   });
+   results.push({text,samePixels,dimensions,offsets,errors:measured.errors});
+  }
+  return results;
+ });
+ for(const r of emojiChecks){assert.equal(r.samePixels,true);assert.deepEqual(r.dimensions,[1080,1350]);assert.deepEqual(r.errors,[]);assert.ok(r.offsets.every(x=>Math.abs(x)<=8),JSON.stringify(r));}
+ const savedText=await textarea.inputValue();
+ await textarea.fill("汽二乙 let's goooo 🗣️🗣️🗣️");await page.locator('#center-text').click();
+ await page.locator('#image-canvas').screenshot({path:resolve(output,'emoji-center-desktop.png')});
+ await page.setViewportSize({width:393,height:852});
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ await page.locator('#image-canvas').screenshot({path:resolve(output,'emoji-center-mobile.png')});
+ await page.setViewportSize({width:1440,height:1050});await textarea.fill(savedText);
+ checks.push('emoji centering: mixed scripts, wrapped lines and joined emoji; preview/export pixels identical at 1080x1350; desktop/mobile screenshots (not iOS real-device validation)');
  await page.getByRole('button',{name:'保存草稿',exact:true}).click();await idle();
  assert.equal(await page.locator('#editor').isVisible(),false);assert.equal(await page.locator('[data-tab="draft"]').getAttribute('aria-pressed'),'true');
  await page.getByRole('button',{name:'編輯圖片',exact:true}).click();await idle();
@@ -383,5 +420,5 @@ try{
  assert.match(await page.locator('#pending-count').innerText(),/235/);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  assert.deepEqual(errors,[]);checks.push('admin loads 235 submissions across three pages with accurate total and no mobile overflow');
- await writeFile(resolve(output,'report.json'),JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:18},null,2));console.log(JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:18}));
+ await writeFile(resolve(output,'report.json'),JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:20},null,2));console.log(JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:20}));
 }finally{await browser.close();await new Promise(r=>server.close(r));db.close();}
