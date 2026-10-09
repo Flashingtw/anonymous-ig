@@ -9,6 +9,7 @@ import {defaultCaption,customCaption,scheduledCaption} from './caption.js';
 import {createImageShare} from './share.js';
 import {mountInstagram,completeInstagramBatch,instagramEnabled,instagramStatus} from './instagram.js';
 import {mountScheduleTime,suggestedTime,localMinute} from './schedule-time.js';
+import {consumeResume} from './resume-batch.js';
 const $=selector=>document.querySelector(selector);
 const base='/api/admin/studio';
 let tab='draft',listing={drafts:[],approved:[],dispatches:[]},sendState={last_number:108,revision:1,batch:null},records=[],assets,doc,dispatch,selected='body',dirty=false,dispatchDirty=false,busy=false,drag;
@@ -361,5 +362,15 @@ else await run(async()=>{
   const user=adminAuth.identity();$('#studio-identity').textContent=`${user?.accessEmail??user?.username??'管理員'} · ${user?.role??''}`;
   await reload();
   const batchId=new URLSearchParams(location.search).get('batch');
-  if(batchId){sendState=await request('/send?batchId='+encodeURIComponent(batchId));dispatch=structuredClone(sendState.batch);if(dispatch){tab='current';renderGallery();showDispatch();}else say('此批次已完成或不存在。');}
+  const resume=consumeResume(batchId);
+  if(batchId){
+    sendState=await request('/send?batchId='+encodeURIComponent(batchId));dispatch=structuredClone(sendState.batch);
+    if(dispatch){
+      tab='current';renderGallery();showDispatch();$('#dispatch-editor').scrollIntoView();
+      if(resume&&dispatch.auto_publish&&dispatch.state==='prepared'&&(!instagramStatus(dispatch.id)||instagramStatus(dispatch.id)==='none')){
+        try{await prepareFinalImages();say('圖片已完成並加入 IG 排程。');}
+        catch(error){outputError=true;throw error;}
+      }
+    }else say('此批次已完成或不存在。');
+  }
 });
