@@ -32,7 +32,7 @@ assert.throws(() => validateSubmissionContent("字".repeat(101)), error => error
 assert.match(await readFile(join(root, "frontend/assets/app.js"), "utf8"), /import \{ MAX_CONTENT_LENGTH, contentLength \} from "\.\/submission-content\.js"/);
 const migrations = (await readdir(join(root, "migrations"))).filter((name) => !name.startsWith("._")).sort();
 const priorMigrations = ["0001_create_submissions.sql", "0002_create_admin_auth.sql", "0004_add_local_admin_auth.sql", "0005_add_access_email.sql", "0006_access_only_admins.sql", "0007_image_drafts.sql", "0008_single_dispatch.sql", "0009_studio_removals.sql"];
-const newMigrations = ["0010_instagram_publish_queue.sql", "0011_multiple_send_batches.sql", "0012_automatic_locked_batches.sql", "0013_instagram_preparation.sql", "0014_instagram_caption_edits.sql"];
+const newMigrations = ["0010_instagram_publish_queue.sql", "0011_multiple_send_batches.sql", "0012_automatic_locked_batches.sql", "0013_instagram_preparation.sql", "0014_instagram_caption_edits.sql", "0015_send_layout_repairs.sql"];
 assert.deepEqual(migrations, [...priorMigrations, ...newMigrations]);
 for (const name of priorMigrations) assert.equal(normalized(await readFile(join(root, 'migrations', name), 'utf8')), normalized(git('show', `${studioBaseline}:migrations/${name}`)), `${name} must remain unchanged`);
 assert.equal(normalized(await readFile(join(root, "migrations/0004_add_local_admin_auth.sql"), "utf8")), normalized(git("show", "98858477827a7076b0e43cde2ed7f9f252fe2076:migrations/0004_add_local_admin_auth.sql")), "0004 must remain unchanged");
@@ -59,7 +59,7 @@ assert.equal(pagination.status, 0, 'pagination must retain all submissions');
 console.log("Rollout boundary passed: transport retained, 100-grapheme limit, prior migrations frozen, IG disabled.");
 
 // Replay unmodified production tests against unmodified production Worker code,
-// changing only the D1 fixture to apply the candidate's 0014 schema.
+// changing only the D1 fixture to apply the candidate's 0015 schema.
 // CI must fetch history so the pinned baseline is available. No remote calls.
 // Under the checkout so the recent Worker's jose import resolves locked dependencies.
 const scratch = join(root, 'tmp');
@@ -89,6 +89,7 @@ try {
       assert.ok(database.raw.prepare('PRAGMA table_info(send_batches)').all().some(column=>column.name==='auto_publish'), 'compatibility fixture must actually apply 0012');
       assert.ok(database.raw.prepare('PRAGMA table_info(instagram_queue)').all().some(column=>column.name==='preparation_status'), 'compatibility fixture must actually apply 0013');
       assert.ok(database.raw.prepare('PRAGMA table_info(instagram_caption_edits)').all().some(column=>column.name==='before_caption'), 'compatibility fixture must actually apply 0014');
+      assert.ok(database.raw.prepare('PRAGMA table_info(send_layout_repairs)').all().some(column=>column.name==='before_layout'), 'compatibility fixture must actually apply 0015');
       assert.deepEqual(database.raw.prepare('PRAGMA foreign_key_check').all(), []);
       const response = await handleApiRequest(new Request("https://admin.example.test/api/submissions", {
         method: "POST", headers: { "Content-Type": "application/json", Origin: "https://flashingtw.github.io" },
@@ -102,12 +103,12 @@ try {
       const payload = await response.json();
       assert.equal(payload.data.submission.status, "pending");
       assert.equal(payload.data.submission.content, undefined);
-      console.log(`${label}: public submission on schema 0014 passed.`);
+      console.log(`${label}: public submission on schema 0015 passed.`);
     } finally {
       database.close();
     }
   }
-  console.log(`Replaying baseline ${replayBaseline} OAuth, moderation, logout and security tests on schema 0014.`);
+  console.log(`Replaying baseline ${replayBaseline} OAuth, moderation, logout and security tests on schema 0015.`);
   const result = spawnSync(process.execPath, ["--test", ...testPaths], {
     cwd: temporaryRoot, stdio: "inherit", timeout: 60_000
   });

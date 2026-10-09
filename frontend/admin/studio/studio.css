@@ -29,6 +29,12 @@
 #ig-caption-original { white-space:pre-wrap;overflow-wrap:anywhere; }
 #ig-caption-editor input[type=checkbox] { width:22px;min-height:22px;vertical-align:middle; }
 #ig-caption-error { color:#9b3428; }
+.layout-repair { width:min(1000px,calc(100vw - 48px));max-height:calc(100dvh - 48px);overflow:auto;box-sizing:border-box;color:#20211f; }
+.layout-repair::backdrop { background:rgb(0 0 0 / 65%); }
+.layout-repair canvas { display:block;width:100%;height:auto; }
+.layout-repair input { width:100%;box-sizing:border-box;min-height:44px; }
+.layout-repair .repair-status { color:#9b3428; }
+.layout-repair > .studio-actions { position:sticky;top:0;z-index:1;background:#f2eee3;padding:8px 0; }
 .studio-card input { width:22px;vertical-align:middle; }
 .editor-grid { display:grid;grid-template-columns:minmax(0,1.1fr) minmax(260px,1fr);gap:24px; }
 .canvas-wrap { min-width:0; }

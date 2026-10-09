@@ -10,6 +10,8 @@ import {createImageShare} from './share.js';
 import {mountInstagram,completeInstagramBatch,instagramEnabled,instagramStatus} from './instagram.js';
 import {mountScheduleTime,suggestedTime,localMinute} from './schedule-time.js';
 import {consumeResume} from './resume-batch.js';
+import {openLayoutRepair} from './layout-repair-editor.js';
+import {preflightFinalImages} from './final-image-preflight.js';
 const $=selector=>document.querySelector(selector);
 const base='/api/admin/studio';
 let tab='draft',listing={drafts:[],approved:[],dispatches:[]},sendState={last_number:108,revision:1,batch:null},records=[],assets,doc,dispatch,selected='body',dirty=false,dispatchDirty=false,busy=false,drag;
@@ -266,6 +268,14 @@ function showDispatch(){
     else if(item.version_id)void thumbnail(img,item.version_id);
     li.append(img,paragraph(`${index+1}. 投稿 #${id} · ${historical?'歷史預覽':`#${number}${locked?'（鎖定）':'（預覽）'}`}${item.confirmed?' · 已確認':''}`));
     if(complete&&!item.confirmed)li.append(singleSave(number));
+    if(item.can_repair_layout)li.append(button('修復排版',async()=>{
+      const batchId=dispatch.id,generation=dispatch.generation,revision=sendState.revision;
+      openLayoutRepair({item,assets:await getAssets(),save:async layout=>{
+        sendState=await request('/send/repair-layout',{method:'POST',body:{batchId,generation,position:item.position,revision,layout}});
+        dispatch=structuredClone(sendState.batch);showDispatch();say(`圖片 #${number} 排版已修復，請繼續產圖與上傳。`);
+      }});
+      say('');
+    }));
     if(locked||historical){list.append(li);return;}
     for(const [label,delta]of [['往前',-1],['往後',1]]){
       const b=button(label,()=>{const next=index+delta;[dispatch.items[index],dispatch.items[next]]=[dispatch.items[next],dispatch.items[index]];dispatchDirty=true;showDispatch();say('順序已調整，請保存。');});b.disabled=index+delta<0||index+delta>=dispatch.items.length;li.append(b);
@@ -309,6 +319,7 @@ async function prepareFinalImages(){
     if(!confirm('鎖定後不能取消、改圖或重排，圖片完成後將自動加入 IG 排程。確定鎖定這一包？'))return;
   }
   if(dispatchDirty||!dispatch.id)await saveDispatch();
+  if(dispatch.state==='editing')await preflightFinalImages(await getAssets(),dispatch.items,sendState.next_number);
   if(dispatch.state==='editing')sendState=await request('/send/prepare',{method:'POST',body:{revision:sendState.revision,batchId:dispatch.id,...(instagramEnabled?{publishAt:publishTime.toISOString()}:{})}});
   else sendState=await request('/send?batchId='+encodeURIComponent(dispatch.id));
   dispatch=structuredClone(sendState.batch);

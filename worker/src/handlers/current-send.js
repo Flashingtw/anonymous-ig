@@ -3,10 +3,17 @@ import {jsonResponse,methodNotAllowed} from '../http.js';
 import {parseJsonObject} from '../validation.js';
 import {currentSend,changeSend,attachFinal,sentRecords,increaseLastNumber} from '../repositories/current-send.js';
 import {readImage} from './image-studio.js';
+import {repairLayout} from '../repositories/layout-repairs.js';
 export async function currentSendHandler(request,env,principal,path){
  const root='/api/admin/studio/send',db=env.DB;
  if(env.SINGLE_SEND_ENABLED!=='true')throw new HttpError(503,'SINGLE_SEND_DISABLED','本次發送尚未啟用。');
  if(path===root&&request.method==='GET')return jsonResponse({ok:true,data:await currentSend(db,new URL(request.url).searchParams.get('batchId')??undefined)});
+ if(path===root+'/repair-layout'){
+  if(request.method!=='POST')return methodNotAllowed(['POST']);
+  const body=await parseJsonObject(request,{allowedKeys:['batchId','generation','position','revision','layout'],maxBytes:2048});
+  await repairLayout(db,body,principal);
+  return jsonResponse({ok:true,data:await currentSend(db,body.batchId)});
+ }
  if(path===root+'/number'){
   if(principal.role!=='owner')throw new HttpError(403,'FORBIDDEN','只有 owner 可以調整最後編號。');
   if(request.method!=='POST')return methodNotAllowed(['POST']);

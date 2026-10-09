@@ -3,6 +3,7 @@ import {prepareAuditLog} from './audit-logs.js';
 import {validItems} from '../../../frontend/admin/studio/model.js';
 import {graphemeLength} from '../../../frontend/assets/graphemes.js';
 import {customCaption,scheduledCaption} from '../../../frontend/admin/studio/caption.js';
+import {applyLayoutRepairs} from './layout-repairs.js';
 const fail=(message,status=409)=>{throw new HttpError(status,'SEND_CONFLICT',message);};
 const stmt=(db,sql,...args)=>db.prepare(sql).bind(...args);
 const assert=(db,sql,...args)=>stmt(db,`INSERT INTO send_assertion SELECT CASE WHEN (${sql}) THEN 1 ELSE 0 END`,...args);
@@ -12,6 +13,7 @@ export async function currentSend(db,batchId){
  for(const batch of batches){batch.items=(await stmt(db,'SELECT * FROM send_items WHERE batch_id=? ORDER BY position',batch.id).all()).results.map(i=>({...i,layout:i.layout?JSON.parse(i.layout):null}));
   if(batch.state==='editing')for(const item of batch.items){const latest=await stmt(db,'SELECT id,text,layout FROM image_versions WHERE draft_id=? ORDER BY draft_revision DESC LIMIT 1',item.submission_id).first();if(latest){item.latest_version_id=latest.id;item.latest_document={text:latest.text,layout:JSON.parse(latest.layout)};}}
  }
+ await applyLayoutRepairs(db,batches);
  const batch=batchId===null?null:batchId===undefined?(batches.find(b=>b.state==='prepared')??batches[0]??null):(batches.find(b=>b.id===batchId)??null);
  const next_number=Math.max(progress.last_number,...batches.flatMap(b=>b.state==='prepared'?b.items.map(i=>i.number??0):[]))+1;
  // Keep 0008-era local/compatibility fixtures readable. Batch rows retain the

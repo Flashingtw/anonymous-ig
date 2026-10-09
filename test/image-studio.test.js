@@ -69,6 +69,23 @@ for(const role of ['owner','admin','moderator'])test(`${role} number adjustment 
  assert.equal((await studio('/send/number','POST',body)).status,role==='owner'?200:403);
  assert.equal((await (await studio('/send')).json()).data.last_number,role==='owner'?120:108);
 });
+for(const role of ['owner','admin','moderator'])test(`${role} locked layout repair endpoint enforces session, CSRF and disabled checks`,async t=>{
+ const {db,env,req,studio,ready,call,headers}=await setup(t,role,true,true);
+ for(const name of ['0010_instagram_publish_queue','0011_multiple_send_batches','0012_automatic_locked_batches','0013_instagram_preparation','0014_instagram_caption_edits','0015_send_layout_repairs'])db.raw.exec(readFileSync(new URL(`../migrations/${name}.sql`,import.meta.url),'utf8'));
+ await req('/api/admin/submissions/1/approve','POST');const version=(await(await ready(1,1)).json()).data.versionId;
+ let state=(await(await studio('/send/save','POST',{revision:1,items:[version],caption:''})).json()).data;
+ env.IG_PUBLISH_ENABLED='true';state=(await(await studio('/send/prepare','POST',{revision:state.revision,batchId:state.batch.id,publishAt:'2030-01-01T00:00:00Z'})).json()).data;
+ const path='/api/admin/studio/send/repair-layout',body={batchId:state.batch.id,generation:state.batch.generation,revision:state.revision,position:0,layout:{body:{x:540,y:675,size:40},number:{x:540,y:385,size:40}}};
+ assert.equal((await call(path,{method:'POST'})).status,401);assert.equal((await call(path,{method:'POST',headers:{Cookie:headers.Cookie,'Content-Type':'application/json'},body:JSON.stringify(body)})).status,403);
+ assert.equal((await studio('/send/repair-layout','POST',{...body,text:'tamper'})).status,400);
+ assert.equal((await studio('/send/repair-layout','POST',body)).status,200);
+ assert.equal((await studio('/send/repair-layout','POST',body)).status,409);
+ // Existing session is rechecked, not merely a frontend role toggle.
+ if(role==='owner')db.raw.exec("INSERT INTO admins(access_email,role) VALUES('backup@example.test','owner')");
+ db.raw.prepare('UPDATE admins SET enabled=0 WHERE id=?').run(role==='owner'?1:2);
+ assert.equal((await studio('/send/repair-layout','POST',{...body,revision:body.revision+1})).status,401);
+ assert.equal(db.raw.prepare('SELECT count(*) n FROM send_layout_repairs').get().n,1);
+});
 for(const role of ['owner','admin','moderator'])test(`${role} studio deletion is authenticated, atomic, revision checked and preserves originals`,async t=>{
  const {db,env,req,studio,ready,call,headers,objects}=await setup(t,role,true,true);
  const body={source:'approved',revision:1};

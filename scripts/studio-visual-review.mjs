@@ -8,6 +8,8 @@ import {pathToFileURL} from 'node:url';
 import {createTestDatabase} from '../test/helpers/d1.js';
 import {handleApiRequest} from '../worker/src/index.js';
 import {increaseLastNumber} from '../worker/src/repositories/current-send.js';
+import {currentSend,changeSend} from '../worker/src/repositories/current-send.js';
+import {currentSendHandler} from '../worker/src/handlers/current-send.js';
 import {instagramHandler} from '../worker/src/handlers/instagram.js';
 import {errorResponse} from '../worker/src/http.js';
 const serve=process.argv.includes('--serve');
@@ -19,6 +21,7 @@ db.raw.exec(readFileSync(resolve(root,'migrations/0011_multiple_send_batches.sql
 db.raw.exec(readFileSync(resolve(root,'migrations/0012_automatic_locked_batches.sql'),'utf8'));
 db.raw.exec(readFileSync(resolve(root,'migrations/0013_instagram_preparation.sql'),'utf8'));
 db.raw.exec(readFileSync(resolve(root,'migrations/0014_instagram_caption_edits.sql'),'utf8'));
+db.raw.exec(readFileSync(resolve(root,'migrations/0015_send_layout_repairs.sql'),'utf8'));
 db.raw.exec("INSERT INTO admins(id,github_user_id,github_username,role,access_email) VALUES(1,'123','test-owner','owner','owner@example.test'); INSERT INTO submissions(id,content,status) VALUES(1,'今天也要記得，留一點時間給自己。','approved'),(2,'不知道該怎麼說，但還是想謝謝一直陪著我的你。','approved');");
 const env={DB:db.DB,APP_ENV:'development',STUDIO_DELETE_ENABLED:'true',SINGLE_SEND_ENABLED:'true',IMAGE_STUDIO_ENABLED:'true',ADMIN_AUTH_PROVIDER:'dev',DEV_ADMIN_MODE:'true',DEV_ADMIN_TOKEN:localToken,STUDIO_IMAGES:{async put(k,v){objects.set(k,v);},async get(k){return objects.has(k)?{body:objects.get(k)}:null;},async delete(k){objects.delete(k);}}};
 const server=createServer(async(req,res)=>{
@@ -31,7 +34,8 @@ const server=createServer(async(req,res)=>{
    // owner/admin/moderator and disabled checks are covered by HTTP integration tests.
    const captionFixture=/^\/api\/admin\/instagram\/batches\/[a-zA-Z0-9-]+\/caption$/.test(url.pathname)&&request.headers.get('Authorization')===`Bearer ${localToken}`;
    let r;
-   try{r=captionFixture?await instagramHandler(request,env,{adminId:1,role:'owner',provider:'dev'},url.pathname):await handleApiRequest(request,env);}
+   const repairFixture=url.pathname==='/api/admin/studio/send/repair-layout'&&request.headers.get('Authorization')===`Bearer ${localToken}`;
+   try{r=captionFixture?await instagramHandler(request,env,{adminId:1,role:'owner',provider:'dev'},url.pathname):repairFixture?await currentSendHandler(request,env,{adminId:1,role:'owner',provider:'dev'},url.pathname):await handleApiRequest(request,env);}
    catch(error){r=errorResponse(error);}
    res.writeHead(r.status,Object.fromEntries(r.headers));res.end(Buffer.from(await r.arrayBuffer()));return;
   }
@@ -466,6 +470,37 @@ try{
  await page.locator('#ig-caption-custom').fill('字'.repeat(2000));assert.equal(await page.locator('#ig-caption-save').isDisabled(),true);
  page.once('dialog',d=>d.accept());await page.locator('#ig-caption-cancel').click();await page.unroute('**/instagram/batches/*/caption');
  checks.push('caption edit: open read-only, scheduled template, desktop/mobile modal, keyboard save, stale revision retains text, explicit reload/cancel, unknown legacy acknowledgement, length guard, reopen persisted caption');
+ // Reproduce the locked-overlap failure locally. Deliberately bypass the new
+ // frontend preflight once to model batches locked by the previous deployment.
+ const repairVersion=crypto.randomUUID(),repairText='文字\n'.repeat(9)+'文字',repairLayout={body:{x:540,y:675,size:44},number:{x:540,y:385,size:40,label:'109'}};
+ db.raw.exec("INSERT INTO submissions(id,content,status) VALUES(500,'original untouched','approved')");
+ db.raw.prepare("INSERT INTO image_drafts(id,text,layout,state) VALUES(500,?,?,'ready')").run(repairText,JSON.stringify(repairLayout));
+ db.raw.prepare('INSERT INTO image_versions(id,draft_id,draft_revision,object_key,text,layout) VALUES(?,500,1,?,?,?)').run(repairVersion,'local-unused-preview',repairText,JSON.stringify(repairLayout));
+ let repairState=await currentSend(db.DB),repairBatch=(await changeSend(db.DB,'save',{revision:repairState.revision,batchId:null,caption:'unchanged custom text',items:[repairVersion]},{adminId:1,role:'owner'})).batch;
+ const queueCount=db.raw.prepare('SELECT count(*) n FROM instagram_queue').get().n;
+ await page.goto(origin+'/admin/studio/?batch='+repairBatch.id);await idle();
+ page.once('dialog',d=>d.accept());await page.locator('#generate-images').click();await idle();
+ assert.match(await page.locator('#studio-status').innerText(),/正文與編號重疊.*尚未鎖定編號/);
+ assert.equal(db.raw.prepare('SELECT state FROM send_batches WHERE id=?').get(repairBatch.id).state,'editing');assert.equal(db.raw.prepare('SELECT count(*) n FROM instagram_queue').get().n,queueCount);
+ repairState=await currentSend(db.DB);const nextBeforeRepair=repairState.next_number;
+ repairBatch=(await changeSend(db.DB,'prepare',{revision:repairState.revision,batchId:repairBatch.id,publishAt:'2030-01-03T00:00:00Z'},{adminId:1,role:'owner'})).batch;
+ const snapshot={batch:db.raw.prepare('SELECT * FROM send_batches WHERE id=?').get(repairBatch.id),item:db.raw.prepare('SELECT * FROM send_items WHERE batch_id=?').get(repairBatch.id),queue:db.raw.prepare('SELECT * FROM instagram_queue WHERE batch_id=?').get(repairBatch.id)};
+ await page.goto(origin+'/admin/studio/?batch='+repairBatch.id);await idle();
+ await page.getByRole('button',{name:'修復排版',exact:true}).click();await idle();
+ const modal=page.locator('dialog.layout-repair');assert.equal(await modal.getByRole('button',{name:'保存修復',exact:true}).isDisabled(),true);assert.match(await modal.locator('[role=status]').innerText(),/重疊/);
+ await modal.getByRole('button',{name:'自動排版',exact:true}).focus();await page.keyboard.press('Enter');assert.equal(await modal.getByLabel('正文字級').inputValue(),'40');assert.equal(await modal.getByRole('button',{name:'保存修復',exact:true}).isDisabled(),false);
+ await page.setViewportSize({width:1280,height:900});await page.screenshot({path:resolve(output,'layout-repair-desktop.png'),fullPage:true});
+ await page.setViewportSize({width:390,height:844});assert.equal(await modal.evaluate(el=>el.scrollWidth>el.clientWidth),false);await page.screenshot({path:resolve(output,'layout-repair-mobile.png'),fullPage:true});
+ await page.route('**/send/repair-layout',route=>route.fulfill({status:409,json:{ok:false,error:{message:'過期修訂，請重新載入'}}}));
+ await modal.getByRole('button',{name:'保存修復',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.repair-status').textContent.includes('過期修訂'));
+ assert.equal(await modal.getByLabel('正文字級').inputValue(),'40');assert.equal(db.raw.prepare('SELECT count(*) n FROM send_layout_repairs').get().n,0);await page.unroute('**/send/repair-layout');
+ await modal.getByRole('button',{name:'保存修復',exact:true}).click();await modal.waitFor({state:'detached'});
+ assert.deepEqual(db.raw.prepare('SELECT * FROM send_batches WHERE id=?').get(repairBatch.id),snapshot.batch);assert.deepEqual(db.raw.prepare('SELECT * FROM send_items WHERE batch_id=?').get(repairBatch.id),snapshot.item);assert.deepEqual(db.raw.prepare('SELECT * FROM instagram_queue WHERE batch_id=?').get(repairBatch.id),snapshot.queue);
+ assert.equal(db.raw.prepare('SELECT count(*) n FROM send_layout_repairs').get().n,1);
+ await page.locator('#generate-images').click();await idle();
+ assert.equal(db.raw.prepare('SELECT publish_status FROM instagram_queue WHERE batch_id=?').get(repairBatch.id).publish_status,'pending');assert.equal(await page.getByRole('button',{name:'修復排版',exact:true}).count(),0);
+ assert.equal((await currentSend(db.DB)).next_number,nextBeforeRepair+1);assert.equal(db.raw.prepare('SELECT content FROM submissions WHERE id=500').get().content,'original untouched');assert.deepEqual(db.raw.prepare('PRAGMA foreign_key_check').all(),[]);
+ checks.push('preflight rejects overlap before reserving; old locked overlap repaired through geometry-only desktop/mobile modal; same number/order/caption/time, stale save retained, audited save then final PNG and queue complete');
  for(let id=1000;id<1235;id++)db.raw.prepare('INSERT INTO submissions(id,content) VALUES(?,?)').run(id,'pagination '+id);
  await page.goto(origin+'/admin/');await page.waitForFunction(()=>document.querySelectorAll('#submissions-list article').length===100);
  await page.locator('#load-more-submissions').click();await page.waitForFunction(()=>document.querySelectorAll('#submissions-list article').length===200);
@@ -474,5 +509,5 @@ try{
  assert.match(await page.locator('#pending-count').innerText(),/235/);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  assert.deepEqual(errors,[]);checks.push('admin loads 235 submissions across three pages with accurate total and no mobile overflow');
- await writeFile(resolve(output,'report.json'),JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:20},null,2));console.log(JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:20}));
+ await writeFile(resolve(output,'report.json'),JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:22},null,2));console.log(JSON.stringify({result:'PASS',checks,productionRequests:0,screenshots:22}));
 }finally{await browser.close();await new Promise(r=>server.close(r));db.close();}
